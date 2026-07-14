@@ -177,6 +177,249 @@ TAG_STATES: list[TagState] = [
 
 
 # --------------------------------------------------------------------------
+# Axis 3: file structure — how one BOOK maps to files on disk
+# --------------------------------------------------------------------------
+# A book is not one file. CalculateBasePath walks up to the common parent of the
+# files it found, so the shape of the file set directly drives what BasePath
+# becomes — and BasePath is what later scans trust.
+
+@dataclass(frozen=True)
+class FileStructure:
+    key: str
+    note: str
+    # file paths relative to the book folder; {n} is the part index
+    files: list[str]
+    parts: int = 1
+
+
+FILE_STRUCTURES: list[FileStructure] = [
+    FileStructure(
+        key="single",
+        note="One .m4b for the whole book. The clean case.",
+        files=["{title}.m4b"],
+    ),
+    FileStructure(
+        key="multi-part",
+        note="Several numbered parts in one folder.",
+        files=["{title} - Part {n:02d}.mp3"],
+        parts=3,
+    ),
+    FileStructure(
+        key="multi-disc",
+        note="Parts in per-disc SUBFOLDERS. The book's files no longer share a "
+             "direct parent, so the common-parent walk has to climb — this is where "
+             "BasePath can end up pointing at the wrong level.",
+        files=["CD{n}/{title} - CD{n}.mp3"],
+        parts=2,
+    ),
+    FileStructure(
+        key="per-chapter",
+        note="One file per chapter. Dozens of files per book.",
+        files=["{n:03d} - Chapter {n}.mp3"],
+        parts=40,
+    ),
+    FileStructure(
+        key="nested-single",
+        note="A single file buried one level deeper than expected (e.g. in an "
+             "'Audio' or 'MP3' subfolder).",
+        files=["Audio/{title}.m4b"],
+    ),
+]
+
+
+# --------------------------------------------------------------------------
+# Axis 4: path hazards — metadata that is DANGEROUS to write to a filesystem
+# --------------------------------------------------------------------------
+# These are the destructive ones. A matching bug leaves a file unlinked; a
+# renaming bug destroys data. Each hazard is a transform applied to the title or
+# author before it is used to build a path.
+#
+# Most need no new books — they are transforms. Where a REAL public-domain book
+# already exhibits the hazard, it is named, because a real one is better evidence.
+
+@dataclass(frozen=True)
+class PathHazard:
+    key: str
+    note: str
+    hazard: str
+    real_example: str = ""
+
+
+PATH_HAZARDS: list[PathHazard] = [
+    PathHazard(
+        key="colon",
+        note="Title contains a colon (every subtitle does).",
+        hazard="`:` is illegal on NTFS and is the alternate-data-stream separator. "
+               "On macOS the Finder shows it as `/`.",
+        real_example="Moby-Dick; or, The Whale / She: A History of Adventure",
+    ),
+    PathHazard(
+        key="slash",
+        note="Title contains a forward slash.",
+        hazard="`/` is the path separator on POSIX — it CANNOT appear in a filename. "
+               "Naive interpolation silently creates a nested directory.",
+    ),
+    PathHazard(
+        key="question-mark",
+        note="Title ends in a question mark.",
+        hazard="`?` is illegal on Windows and is a glob metacharacter.",
+        real_example="What Is Man? (Twain)",
+    ),
+    PathHazard(
+        key="reserved-name",
+        note="Author or title is a reserved Windows device name.",
+        hazard="CON, PRN, AUX, NUL, COM1-9, LPT1-9 cannot be a filename on Windows "
+               "even WITH an extension. Creating one fails or hangs.",
+    ),
+    PathHazard(
+        key="trailing-dot-space",
+        note="Title ends with a dot or a space.",
+        hazard="Windows silently STRIPS trailing dots and spaces, so the path written "
+               "is not the path read back — a rename can lose the file.",
+    ),
+    PathHazard(
+        key="leading-dot",
+        note="Title begins with a dot.",
+        hazard="Creates a hidden file on Unix; many scanners skip dotfiles, so the "
+               "book vanishes from its own library.",
+    ),
+    PathHazard(
+        key="component-length",
+        note="A single path COMPONENT over 255 bytes.",
+        hazard="ext4/APFS cap one component at 255 BYTES, not characters. Accented "
+               "characters cost 2 bytes in UTF-8, so a 200-character accented title "
+               "overflows. Real 18th-century full titles do this unaided.",
+        real_example="Defoe's full Robinson Crusoe title",
+    ),
+    PathHazard(
+        key="total-path-length",
+        note="Total path over 260 characters.",
+        hazard="Windows MAX_PATH is 260 unless long paths are explicitly enabled. "
+               "{Root}/{Author}/{Series}/{Year} - {Title} reaches it easily.",
+    ),
+    PathHazard(
+        key="unicode-normalization",
+        note="Title/author contains precomposed vs decomposed accents (NFC vs NFD).",
+        hazard="macOS normalizes filenames to NFD. A name written as NFC reads back as "
+               "a DIFFERENT BYTE STRING, so an exact-match lookup fails and the renamer "
+               "can create a duplicate folder alongside the original.",
+        real_example="Karel Čapek, Émile Zola, Charlotte Brontë",
+    ),
+    PathHazard(
+        key="case-collision",
+        note="Two books whose paths differ only by case.",
+        hazard="APFS and NTFS are case-INSENSITIVE by default; ext4 is case-sensitive. "
+               "Two distinct folders on Linux collide into one on macOS/Windows — one "
+               "book overwrites the other.",
+    ),
+    PathHazard(
+        key="path-traversal",
+        note="Metadata field contains `../` or an absolute path.",
+        hazard="SECURITY. Tags are attacker-controlled input. A title of `../../etc` "
+               "interpolated into a rename target escapes the library root. Must be "
+               "rejected, not sanitized-and-used.",
+    ),
+    PathHazard(
+        key="control-chars",
+        note="Tag value contains a newline, tab, or NUL.",
+        hazard="Embedded tags can carry arbitrary bytes. A newline in a title breaks "
+               "line-oriented tooling; a NUL truncates the path in C-level syscalls.",
+    ),
+    PathHazard(
+        key="shell-metachars",
+        note="Title contains `&`, `$`, backtick, `%`, `#`, `*`, quotes.",
+        hazard="Harmless if paths are passed as argv; catastrophic if any code path "
+               "builds a shell string. ffprobe is invoked as a subprocess — this is a "
+               "live concern, not a theoretical one.",
+    ),
+    PathHazard(
+        key="empty-field",
+        note="Author or title is empty, whitespace-only, or literally 'Unknown'.",
+        hazard="Produces a path like `{Root}//{Title}` or a folder named ` `. Also: "
+               "authors credited 'Various' or 'Anonymous' collapse an entire library "
+               "into one folder.",
+    ),
+    PathHazard(
+        key="rtl-and-bidi",
+        note="Title contains right-to-left script or bidi control characters.",
+        hazard="Bidi overrides can make a filename DISPLAY differently from its bytes — "
+               "a classic spoofing vector, and a rename that looks correct but isn't.",
+    ),
+]
+
+
+# --------------------------------------------------------------------------
+# Axis 5: tag dialect — the same tag means different things per container
+# --------------------------------------------------------------------------
+# This is why PathMetadataParser.ExtractAsin carries twenty-odd spellings. ffprobe
+# surfaces different key names depending on the container, so a scanner that only
+# knows one dialect silently reads nothing.
+
+@dataclass(frozen=True)
+class TagDialect:
+    key: str
+    container: str
+    asin_keys: list[str]
+    note: str
+
+
+TAG_DIALECTS: list[TagDialect] = [
+    TagDialect(
+        key="mp4-atoms",
+        container="m4b",
+        asin_keys=["----:com.apple.iTunes:ASIN", "----:com.apple.iTunes:CDEK"],
+        note="iTunes freeform atoms. The Audible-native shape.",
+    ),
+    TagDialect(
+        key="id3v23",
+        container="mp3",
+        asin_keys=["TXXX:ASIN"],
+        note="ID3v2.3 user-defined text frame. Note v2.3 uses different frame "
+             "semantics from v2.4 — date handling in particular.",
+    ),
+    TagDialect(
+        key="id3v24",
+        container="mp3",
+        asin_keys=["TXXX:ASIN", "TXXX:AUDIBLE_ASIN"],
+        note="ID3v2.4.",
+    ),
+    TagDialect(
+        key="vorbis",
+        container="flac",
+        asin_keys=["ASIN", "asin"],
+        note="Vorbis comments are case-insensitive by spec but ffprobe surfaces them "
+             "verbatim — so case handling actually matters here.",
+    ),
+    TagDialect(
+        key="none",
+        container="mp3",
+        asin_keys=[],
+        note="No ASIN in any spelling. The common real-world case.",
+    ),
+]
+
+
+# --------------------------------------------------------------------------
+# Axis 6: clutter — everything in a library that is NOT the book
+# --------------------------------------------------------------------------
+# CollectCandidates grabs every audio file under the scan root, and
+# PathMetadataParser reads desc.txt / reader.txt / cover.* sidecars. Both behaviours
+# are exercised here.
+
+CLUTTER: dict[str, str] = {
+    "sidecars": "desc.txt, reader.txt, cover.jpg — read by PathMetadataParser",
+    "cover-variants": "cover.jpg, folder.png, cover.webp alongside each other",
+    "sample-track": "sample.mp3 / preview.mp3 — an AUDIO file that is not the book",
+    "intro-outro": "'00 - Intro.mp3', 'Outro.mp3' — audio, not chapters",
+    "bonus-content": "'Bonus - Interview with the Author.mp3' — real audio, wrong book",
+    "non-audio": "book.pdf, info.nfo, playlist.cue, subtitles.srt",
+    "os-detritus": ".DS_Store, Thumbs.db, @eaDir/, .stfolder/ — must be ignored",
+    "zero-byte": "a 0-byte .mp3 — ffprobe returns nothing; must not crash the scan",
+    "corrupt-audio": "a file with an audio extension that is not audio",
+}
+
+
+# --------------------------------------------------------------------------
 # Scenarios: the library-level shapes worth generating whole
 # --------------------------------------------------------------------------
 
@@ -254,6 +497,73 @@ SCENARIOS: list[Scenario] = [
         expect="the pairs dedupe to one work; series positions survive round-trip",
     ),
     Scenario(
+        key="rename-hazards",
+        note="THE DESTRUCTIVE ONES. Metadata that is dangerous to write to a filesystem: "
+             "path-illegal characters, length bombs, reserved Windows names, unicode "
+             "normalization, and path traversal. A matching bug leaves a file unlinked; a "
+             "renaming bug LOSES DATA. Generate this, point a rename at it, and confirm "
+             "every file still exists afterwards and no path escaped the root.",
+        layouts=["listenarr-native", "audnex-plex"],
+        tag_states=["correct-no-asin"],
+        expect="every hazard is sanitized or refused; NO file is lost, NO path escapes "
+               "the library root; a dry run reports exactly what a real run would do",
+        extras={"hazards": [h.key for h in PATH_HAZARDS]},
+    ),
+    Scenario(
+        key="multi-file-books",
+        note="One book, many files: multi-part, multi-disc subfolders, per-chapter. "
+             "Drives CalculateBasePath's common-parent walk — with per-disc subfolders "
+             "the files share no direct parent, so BasePath has to climb, and climbing "
+             "one level too far swallows a sibling book.",
+        layouts=["listenarr-native", "audnex-plex"],
+        tag_states=["correct-no-asin", "correct-with-asin"],
+        expect="all parts link to ONE book; BasePath is the book folder, never its parent",
+        extras={"structures": ["multi-part", "multi-disc", "per-chapter", "nested-single"]},
+    ),
+    Scenario(
+        key="clutter",
+        note="Everything in a library that is not the book: samples, intros, bonus tracks, "
+             "sidecars, cover art, OS detritus, a zero-byte mp3, a corrupt file with an "
+             "audio extension. CollectCandidates grabs EVERY audio file under the root, "
+             "so all of this lands in the candidate set.",
+        layouts=["listenarr-native", "audnex-plex"],
+        tag_states=["correct-no-asin"],
+        expect="the book's real files link; samples/intros/bonus do not; sidecars are read; "
+               "the zero-byte and corrupt files do not crash or hang the scan",
+        extras={"clutter": list(CLUTTER)},
+    ),
+    Scenario(
+        key="tag-dialects",
+        note="The same ASIN written in every spelling ffprobe might surface it under, "
+             "across m4b/mp3/flac. ExtractAsin carries twenty-odd spellings for a reason; "
+             "nothing currently proves it reads them all.",
+        layouts=["listenarr-native"],
+        tag_states=["correct-with-asin"],
+        expect="the ASIN is found in every dialect",
+        extras={"dialects": [d.key for d in TAG_DIALECTS]},
+    ),
+    Scenario(
+        key="duplicate-editions",
+        note="The same work present twice: two formats, abridged vs unabridged, two "
+             "narrators, or the two distinct ASINs that share a series slot. Which wins? "
+             "Nothing in the code says.",
+        layouts=["audnex-plex"],
+        tag_states=["correct-with-asin"],
+        expect="the duplicate is DETECTED, not silently double-added or silently dropped",
+    ),
+    Scenario(
+        key="scale",
+        note="Volume, not variety. Explodes the corpus into a library of tens of thousands "
+             "of files via per-chapter splits. This is the scenario that MEASURES the "
+             "ffprobe fan-out cost rather than estimating it: with no BasePath, scanRoot "
+             "falls back to the library root and the tag fallback ffprobes every unmatched "
+             "file in the library, once per audiobook scanned. Time it.",
+        layouts=["audnex-plex"],
+        tag_states=["correct-no-asin"],
+        expect="scan completes in bounded time; record wall-clock and ffprobe process count",
+        extras={"structures": ["per-chapter"], "repeat_factor": 20},
+    ),
+    Scenario(
         key="mixed-reality",
         note="What an actual library looks like: several layouts side by side, a realistic "
              "spread of tag states, some loose files, some untagged. Nothing is uniform. "
@@ -280,11 +590,25 @@ SCENARIOS: list[Scenario] = [
 
 LAYOUTS_BY_KEY = {layout.key: layout for layout in LAYOUTS}
 TAG_STATES_BY_KEY = {state.key: state for state in TAG_STATES}
+STRUCTURES_BY_KEY = {structure.key: structure for structure in FILE_STRUCTURES}
+HAZARDS_BY_KEY = {hazard.key: hazard for hazard in PATH_HAZARDS}
+DIALECTS_BY_KEY = {dialect.key: dialect for dialect in TAG_DIALECTS}
 SCENARIOS_BY_KEY = {scenario.key: scenario for scenario in SCENARIOS}
 
 
 if __name__ == "__main__":
-    print(f"{len(LAYOUTS)} layouts x {len(TAG_STATES)} tag states")
-    print(f"{len(SCENARIOS)} scenarios\n")
+    print("axes")
+    print(f"  {len(LAYOUTS):>2} layouts          on-disk folder conventions")
+    print(f"  {len(TAG_STATES):>2} tag states       what the tags say vs the folder")
+    print(f"  {len(FILE_STRUCTURES):>2} file structures  how one book maps to files")
+    print(f"  {len(PATH_HAZARDS):>2} path hazards     metadata that is unsafe to write to disk")
+    print(f"  {len(TAG_DIALECTS):>2} tag dialects     per-container tag spellings")
+    print(f"  {len(CLUTTER):>2} clutter kinds    everything that is not the book")
+    print()
+    print(f"{len(SCENARIOS)} scenarios")
     for scenario in SCENARIOS:
-        print(f"  {scenario.key:28} {scenario.expect}")
+        print(f"  {scenario.key:28} {scenario.expect[:64]}")
+    print()
+    print("destructive (a bug here LOSES DATA, it does not merely fail to match):")
+    for hazard in PATH_HAZARDS:
+        print(f"  {hazard.key:22} {hazard.hazard.splitlines()[0][:58]}")

@@ -688,6 +688,10 @@ def emit_clutter(
             "kind": "clutter",
             "clutter_kind": kind,
             "belongs_to_asin": None,
+            # Nothing here is the book. CollectCandidates grabs every audio file under the
+            # root, so the sample, the intro and the bonus interview all reach the candidate
+            # set — and a correct scanner attaches none of them to anything.
+            "expect_linked_asin": None,
             "expect": expect,
         })
 
@@ -995,6 +999,11 @@ def generate(
                         "part": part,
                         "of": structure.parts,
                         "tags_written": written_tags,
+                        # The machine-checkable expectation. Whatever the tags say, this file
+                        # is a part of THIS book and a correct scanner links it to THIS book.
+                        # A tag that lies is a reason to surface a conflict, never a reason to
+                        # attach the file to the book the tag names.
+                        "expect_linked_asin": book["asin"],
                         "expect": cases.TAG_STATES_BY_KEY[state].expect,
                         "expect_hazard": spec.expect if spec else None,
                     })

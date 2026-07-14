@@ -472,9 +472,17 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         key="title-collision",
-        note="The Haggard trap. Three distinct novels — She / She and Allan / "
-             "Ayesha: The Return of She — under one author. A bidirectional Contains "
-             "attributes all three to 'She'. The subtitled form must still match.",
+        note="The Haggard trap. Two distinct novels under one author, whose titles contain "
+             "one another: 'She' and 'She And Allan'. A bidirectional Contains attributes "
+             "both to the same work, and the author check agrees, so it cannot arbitrate.\n"
+             "\n"
+             "Note the canonical title is 'She: A History of Adventure' — Audnex folds the "
+             "subtitle into the title and leaves the subtitle field null. So the collision "
+             "is only visible on the BASE title, which is also the only comparison a scanner "
+             "can make against a folder: nobody names a folder 'She: A History of "
+             "Adventure'. That same fact is what subtitled-title tests from the other side — "
+             "folder 'She', tag 'She: A History of Adventure' is a TRUE match, and a "
+             "containment rule tightened until the collision goes away will kill it.",
         layouts=["audnex-plex", "listenarr-native"],
         tag_states=["colliding-title", "subtitled-title"],
         expect="subtitled-title links; colliding-title does not",

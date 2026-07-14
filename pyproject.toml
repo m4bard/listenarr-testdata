@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "listenarr-testdata"
 version = "0.1.0"
@@ -9,6 +13,11 @@ dependencies = ["mutagen>=1.47"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
+
+# tools/ and corpus/ are scripts run in place, not an importable package. Installing the
+# project is only a way to get the dependencies; there is nothing to put on sys.path.
+[tool.setuptools]
+py-modules = []
 
 [tool.ruff]
 line-length = 100

@@ -132,12 +132,22 @@ def drop_empty(segment: str, values: dict[str, str]) -> str:
     return re.sub(r"\s{2,}", " ", segment).strip()
 
 
-def render(pattern: str, values: dict[str, str]) -> pathlib.PurePosixPath | None:
+def render(
+    pattern: str,
+    values: dict[str, str],
+    allow_empty: bool = False,
+) -> pathlib.PurePosixPath | None:
     """Expand a layout pattern into a relative path, one safe component per segment.
 
     Returns None if a whole segment would be empty — which is how a book opts out of a
     layout it cannot express. A standalone book has no `{series}` directory level to stand
     in, so it does not appear in a series layout at all; it does not get a blank folder.
+
+    `allow_empty` is for the empty-field HAZARD, where the blank is the entire point: an
+    author credited '' (or 'Various', or 'Anonymous') is real, and the file must land on
+    disk under whatever degenerate component that produces. Without this the book would be
+    quietly skipped and the hazard would test nothing at all — which is exactly what it did
+    until a test asked whether every declared hazard was really being generated.
     """
     parts: list[str] = []
     for segment in pattern.split("/"):
@@ -147,7 +157,7 @@ def render(pattern: str, values: dict[str, str]) -> pathlib.PurePosixPath | None
             expanded = drop_empty(segment, values).format(**values)
         except KeyError:
             return None
-        if "{" in segment and not expanded.strip(" -[]"):
+        if "{" in segment and not expanded.strip(" -[]") and not allow_empty:
             return None
         parts.append(posix_component(expanded))
     return pathlib.PurePosixPath(*parts) if parts else pathlib.PurePosixPath()
@@ -251,10 +261,29 @@ def numeral_variant(title: str) -> str | None:
     return None
 
 
+def base_title(title: str) -> str:
+    """The title with any subtitle removed: 'She: A History of Adventure' -> 'She'.
+
+    Audnex does not reliably split these. For most of the corpus the canonical title carries
+    the subtitle inline and the `subtitle` field is null, so the base form has to be
+    recovered from the string — which is exactly what a scanner comparing a folder name to a
+    record title has to do, and exactly where the Haggard collision bites.
+    """
+    return title.split(":", 1)[0].strip()
+
+
 def subtitled_title(book: dict[str, Any]) -> str | None:
-    """The same work's full title with its subtitle — a TRUE match that must survive."""
+    """The same work's FULL title, where the folder carries only the base form.
+
+    A true match that must survive any fix aimed at colliding-title. Folder 'She', tag
+    'She: A History of Adventure' — same work. A containment rule tightened until the
+    Haggard collision goes away will usually kill this one too, which is why it is here.
+    """
+    title = str(book["title"])
     if book["subtitle"]:
-        return f"{book['title']}: {book['subtitle']}"
+        return f"{title}: {book['subtitle']}"
+    if ":" in title:
+        return title
     return None
 
 
@@ -277,16 +306,20 @@ def colliding_title_book(book: dict[str, Any], corpus: list[dict[str, Any]]) -> 
     The Haggard trap: folder says 'She', tag says 'She and Allan'. A bidirectional Contains
     match attributes both to the same work. Restricted to same-author collisions, which is
     what makes it vicious — the author check agrees, so it cannot arbitrate.
+
+    Compared on BASE titles, because that is the comparison a scanner actually performs: the
+    canonical title is 'She: A History of Adventure' and no folder is ever named that.
     """
-    mine = book["title"].lower()
+    mine = base_title(book["title"]).lower()
     mine_authors = {a.lower() for a in book["authors"]}
     candidates = [
         other
         for other in corpus
         if other["asin"] != book["asin"]
-        and other["title"].lower() != mine
+        and base_title(other["title"]).lower() != mine
         and mine_authors & {a.lower() for a in other["authors"]}
-        and (mine in other["title"].lower() or other["title"].lower() in mine)
+        and (mine in base_title(other["title"]).lower()
+             or base_title(other["title"]).lower() in mine)
     ]
     return candidates[0] if candidates else None
 
@@ -296,89 +329,101 @@ def apply_tag_state(
     book: dict[str, Any],
     corpus: list[dict[str, Any]],
     rng: random.Random,
-) -> tuple[Meta | None, bool]:
-    """Build the metadata to write, given the tag state. Returns (meta, applied).
+) -> tuple[Meta | None, Meta, bool]:
+    """Build the metadata for this tag state. Returns (tags, path, applied).
 
-    `applied` is False when this book cannot express this state — no subtitle to add, no
-    colliding sibling, no known author variant. The caller falls back to the truth and
+    THE FOLDER TELLS THE TRUTH; ONLY THE TAGS LIE. Every expectation in cases.py is written
+    as what a correct scanner should do *given that the folder identifies the book
+    correctly* — 'prefer the folder, surface the conflict'. So the path metadata is the
+    book's real metadata, and the tag metadata is what the transform made of it. Building
+    the folder from the lie too would leave no disagreement to detect, and the scenario
+    would pass against a scanner that has no conflict handling at all.
+
+    `tags` is None for no-tags. `applied` is False when this book cannot express this state
+    — no subtitle, no colliding sibling, no known author variant — and the caller then
     records what actually happened, so the manifest never claims a transform that did not
     take place.
     """
-    meta = Meta.truth(book)
+    tags = Meta.truth(book)
+    path = Meta.truth(book)
 
     if state == "correct-with-asin":
-        return meta, True
+        return tags, path, True
 
     if state == "correct-no-asin":
-        meta.asin = None
-        return meta, True
+        tags.asin = None
+        return tags, path, True
 
     if state == "no-tags":
-        return None, True
+        return None, path, True
 
     if state == "wrong-title-same-author":
         other = same_author_other_book(book, corpus)
         if not other:
-            return meta, False
-        meta.title = other["title"]
-        meta.asin = None
-        return meta, True
+            return tags, path, False
+        tags.title = other["title"]
+        tags.asin = None
+        return tags, path, True
 
     if state == "wrong-author":
         others = [b for b in corpus if not ({a.lower() for a in b["authors"]}
                                             & {a.lower() for a in book["authors"]})]
         if not others:
-            return meta, False
-        meta.authors = list(rng.choice(others)["authors"])
-        meta.asin = None
-        return meta, True
+            return tags, path, False
+        tags.authors = list(rng.choice(others)["authors"])
+        tags.asin = None
+        return tags, path, True
 
     if state == "wrong-asin":
         # Borrow a REAL ASIN from a different corpus book. Never invent one.
         others = [b for b in corpus if b["asin"] != book["asin"]]
-        meta.asin = rng.choice(others)["asin"]
-        return meta, True
+        tags.asin = rng.choice(others)["asin"]
+        return tags, path, True
 
     if state == "colliding-title":
         other = colliding_title_book(book, corpus)
         if not other:
-            return meta, False
-        meta.title = other["title"]
-        meta.asin = None
-        return meta, True
+            return tags, path, False
+        tags.title = other["title"]
+        tags.asin = None
+        return tags, path, True
 
     if state == "subtitled-title":
         full = subtitled_title(book)
         if not full:
-            return meta, False
-        meta.title = full
-        meta.asin = None
-        return meta, True
+            return tags, path, False
+        # The one state where the folder is NOT the canonical title: no human names a folder
+        # 'She: A History of Adventure'. The folder carries the base form, the tag the full
+        # one, and they are the same work.
+        tags.title = full
+        path.title = base_title(full)
+        tags.asin = None
+        return tags, path, True
 
     if state == "author-variant":
         variants = [author_variant(a) for a in book["authors"]]
         if not any(variants):
-            return meta, False
-        meta.authors = [v or a for v, a in zip(variants, book["authors"], strict=True)]
-        meta.asin = None
-        return meta, True
+            return tags, path, False
+        tags.authors = [v or a for v, a in zip(variants, book["authors"], strict=True)]
+        tags.asin = None
+        return tags, path, True
 
     if state == "translator-as-author":
         for author in book["authors"]:
             for known, translator in TRANSLATORS.items():
                 if known.lower() in author.lower():
-                    meta.authors = [translator]
-                    meta.asin = None
-                    return meta, True
-        return meta, False
+                    tags.authors = [translator]
+                    tags.asin = None
+                    return tags, path, True
+        return tags, path, False
 
     if state == "numeral-variant":
         variant = numeral_variant(book["title"])
         if not variant:
-            return meta, False
-        meta.title = variant
-        meta.asin = None
-        return meta, True
+            return tags, path, False
+        tags.title = variant
+        tags.asin = None
+        return tags, path, True
 
     raise ValueError(f"unknown tag state: {state}")
 
@@ -853,14 +898,14 @@ def generate(
             else:
                 state = tag_states[(index + copy_index) % len(tag_states)]
 
-            meta, applied = apply_tag_state(state, book, corpus, rng)
+            tags, path, applied = apply_tag_state(state, book, corpus, rng)
             if not applied:
                 # This book cannot express this state (no subtitle, no colliding sibling, no
                 # known author variant). Record the truth and say so — never claim a
                 # transform that did not happen.
-                state = "correct-no-asin" if meta else state
-                if meta:
-                    meta.asin = None
+                state = "correct-no-asin" if tags else state
+                if tags:
+                    tags.asin = None
 
             structure = structures[(index + copy_index) % len(structures)]
 
@@ -869,19 +914,21 @@ def generate(
             if hazards:
                 chosen = HAZARDS_BY_KEY[hazards[(index + copy_index) % len(hazards)]]
                 hazard_keys = [chosen.key]
-                if chosen.twin and twin_differs(chosen, meta or truth):
+                if chosen.twin and twin_differs(chosen, path):
                     hazard_keys.append(chosen.key)
 
             for emission, hazard_key in enumerate(hazard_keys):
-                path_meta = meta or truth  # no-tags still needs a folder, built from the truth
-                tag_meta = meta
+                # The folder is built from the TRUTH; only the tags carry the transform.
+                path_meta = path
+                tag_meta = tags
                 spec = HAZARDS_BY_KEY[hazard_key] if hazard_key else None
                 if spec:
                     path_meta = apply_hazard(spec, path_meta, use_twin=emission == 1)
                     tag_meta = apply_hazard(spec, tag_meta, use_twin=emission == 1) if tag_meta \
                         else None
 
-                folder = render(layout.folder, pattern_values(path_meta))
+                folder = render(layout.folder, pattern_values(path_meta),
+                                allow_empty=spec is not None)
                 if folder is None:
                     skipped.append({"asin": book["asin"], "why": "layout unrenderable"})
                     continue
@@ -925,9 +972,9 @@ def generate(
                     dest, file_moved = claim(book_dir / rel, unit, file_owner, book, reuse=False)
                     silence.place(ext, dest)
 
-                    tags: dict[str, str] = {}
+                    written_tags: dict[str, str] = {}
                     if tag_meta is not None:
-                        tags = write_tags(dest, tag_meta, this_dialect)
+                        written_tags = write_tags(dest, tag_meta, this_dialect)
 
                     entries.append({
                         "path": str(dest.relative_to(out)),
@@ -947,7 +994,7 @@ def generate(
                         "hazard_twin": bool(spec and spec.twin and emission == 1),
                         "part": part,
                         "of": structure.parts,
-                        "tags_written": tags,
+                        "tags_written": written_tags,
                         "expect": cases.TAG_STATES_BY_KEY[state].expect,
                         "expect_hazard": spec.expect if spec else None,
                     })
@@ -995,10 +1042,10 @@ def main() -> int:
     if not args.scenario or not args.out:
         ap.error("--scenario and --out are required (or --list)")
 
-    scenario = cases.SCENARIOS_BY_KEY.get(args.scenario)
-    if scenario is None:
+    if args.scenario not in cases.SCENARIOS_BY_KEY:
         ap.error(f"unknown scenario '{args.scenario}'. Known: "
                  f"{', '.join(cases.SCENARIOS_BY_KEY)}")
+    scenario = cases.SCENARIOS_BY_KEY[args.scenario]
 
     if args.out.exists() and any(args.out.iterdir()):
         if not args.force:

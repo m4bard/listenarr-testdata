@@ -17,10 +17,20 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+# The tools/ and corpus/ modules are scripts, not an installed package, so the tests put
+# them on sys.path before importing them. That is an import after code, by construction.
+"tests/*" = ["E402"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
 files = ["tools", "corpus", "tests"]
+# mutagen ships no type information, so every tag write is an untyped call. Turning this on
+# would mean casting at ~40 call sites to say nothing useful.
+disallow_untyped_calls = false
+# corpus.json is parsed as plain JSON: its dicts are genuinely heterogeneous.
+disallow_any_generics = false
 
 [[tool.mypy.overrides]]
 module = "mutagen.*"

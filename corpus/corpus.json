@@ -1,0 +1,1450 @@
+{
+  "books": [
+    {
+      "asin": "B008DFUGCQ",
+      "title": "A Princess of Mars",
+      "subtitle": null,
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Bob Thomley"
+      ],
+      "series": "Barsoom",
+      "series_asin": "B007D0J4H0",
+      "series_position": "1",
+      "release_date": "2012-06-23",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "series"
+      ]
+    },
+    {
+      "asin": "B071YLS9YL",
+      "title": "A Princess of Mars",
+      "subtitle": "Barsoom 1",
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Arthur Vincet"
+      ],
+      "series": "Barsoom",
+      "series_asin": "B007D0J4H0",
+      "series_position": "1",
+      "release_date": "2017-04-24",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "series"
+      ]
+    },
+    {
+      "asin": "B01FKWL15A",
+      "title": "Twenty Thousand Leagues Under the Sea",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Bill Homewood"
+      ],
+      "series": "Captain Nemo",
+      "series_asin": "B09CLW5RN4",
+      "series_position": "1",
+      "release_date": "2016-05-13",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "numeral"
+      ]
+    },
+    {
+      "asin": "B076HSP1FT",
+      "title": "20,000 Leagues Under the Sea",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "David Linski"
+      ],
+      "series": "Captain Nemo",
+      "series_asin": "B09CLW5RN4",
+      "series_position": "1",
+      "release_date": "2017-10-24",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "numeral"
+      ]
+    },
+    {
+      "asin": "B007BR5KZA",
+      "title": "The Wonderful Wizard of Oz",
+      "subtitle": null,
+      "authors": [
+        "L. Frank Baum"
+      ],
+      "narrators": [
+        "Anne Hathaway"
+      ],
+      "series": "Oz",
+      "series_asin": "B005NAUFS4",
+      "series_position": "1",
+      "release_date": "2012-03-08",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "series"
+      ]
+    },
+    {
+      "asin": "B002V5CJM4",
+      "title": "The Wonderful Wizard of Oz",
+      "subtitle": null,
+      "authors": [
+        "L. Frank Baum"
+      ],
+      "narrators": [
+        "Cindy Hardin Killavey"
+      ],
+      "series": "Oz",
+      "series_asin": "B005NAUFS4",
+      "series_position": "1",
+      "release_date": "2008-01-04",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "series"
+      ]
+    },
+    {
+      "asin": "B002UZJF4U",
+      "title": "The Three Musketeers",
+      "subtitle": null,
+      "authors": [
+        "Alexandre Dumas"
+      ],
+      "narrators": [
+        "John Lee"
+      ],
+      "series": "D'Artagnan: The Musketeers Cycle",
+      "series_asin": "B007C4SDU6",
+      "series_position": "1",
+      "release_date": "2009-03-03",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "series"
+      ]
+    },
+    {
+      "asin": "B002V0RG8G",
+      "title": "The Three Musketeers",
+      "subtitle": null,
+      "authors": [
+        "Alexandre Dumas"
+      ],
+      "narrators": [
+        "Simon Vance"
+      ],
+      "series": "D'Artagnan: The Musketeers Cycle",
+      "series_asin": "B007C4SDU6",
+      "series_position": "1",
+      "release_date": "2007-05-24",
+      "language": "english",
+      "tags": [
+        "work-key",
+        "series"
+      ]
+    },
+    {
+      "asin": "B00BHPI2TS",
+      "title": "The Marvelous Land of Oz",
+      "subtitle": "Oz, Book 2",
+      "authors": [
+        "L. Frank Baum"
+      ],
+      "narrators": [
+        "Tara Sands"
+      ],
+      "series": "Oz",
+      "series_asin": "B005NAUFS4",
+      "series_position": "2",
+      "release_date": "2013-02-19",
+      "language": "english",
+      "tags": [
+        "series"
+      ]
+    },
+    {
+      "asin": "B004YWTD30",
+      "title": "She: A History of Adventure",
+      "subtitle": null,
+      "authors": [
+        "H. Rider Haggard"
+      ],
+      "narrators": [
+        "B.J. Harrison"
+      ],
+      "series": "Ayesha",
+      "series_asin": "B01E633FQM",
+      "series_position": "1",
+      "release_date": "2011-05-03",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "subtitle"
+      ]
+    },
+    {
+      "asin": "B0096QR7Z0",
+      "title": "Allan Quatermain",
+      "subtitle": null,
+      "authors": [
+        "H. Rider Haggard"
+      ],
+      "narrators": [
+        "Bill Homewood"
+      ],
+      "series": "Allan Quatermain",
+      "series_asin": "B01F5TL5K4",
+      "series_position": "15",
+      "release_date": "2012-09-07",
+      "language": "english",
+      "tags": [
+        "title-collision"
+      ]
+    },
+    {
+      "asin": "B002UZKHRE",
+      "title": "Marie",
+      "subtitle": null,
+      "authors": [
+        "H. Rider Haggard"
+      ],
+      "narrators": [
+        "Shelly Frasier"
+      ],
+      "series": "Allan Quatermain",
+      "series_asin": "B01F5TL5K4",
+      "series_position": "1",
+      "release_date": "2003-05-13",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series-order"
+      ]
+    },
+    {
+      "asin": "B00OQQTXE8",
+      "title": "The Jungle Book",
+      "subtitle": null,
+      "authors": [
+        "Rudyard Kipling"
+      ],
+      "narrators": [
+        "Margaret Maynard",
+        "Aarj Jain",
+        "Suyash Mohan",
+        "Asif Ali Beg",
+        "Harish V Nair",
+        "Prerna Chawla",
+        "Seaon Dcosta",
+        "Satyakam Chaudhury"
+      ],
+      "series": "The Jungle Books",
+      "series_asin": "B018T5ESBE",
+      "series_position": "1",
+      "release_date": "2014-10-22",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B01JWOHBEC",
+      "title": "The Second Jungle Book",
+      "subtitle": null,
+      "authors": [
+        "Rudyard Kipling"
+      ],
+      "narrators": [
+        "Peter Batchelor"
+      ],
+      "series": "The Jungle Books",
+      "series_asin": "B018T5ESBE",
+      "series_position": "2",
+      "release_date": "2016-08-09",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B002V1OVFQ",
+      "title": "Pellucidar",
+      "subtitle": null,
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Patrick Lawlor"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2003-09-11",
+      "language": "english",
+      "tags": [
+        "title-collision"
+      ]
+    },
+    {
+      "asin": "B0C6B525PQ",
+      "title": "Tanar of Pellucidar",
+      "subtitle": null,
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Rob Vlock"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2023-05-25",
+      "language": "english",
+      "tags": [
+        "title-collision"
+      ]
+    },
+    {
+      "asin": "B002V5B7TK",
+      "title": "Tarzan of the Apes",
+      "subtitle": null,
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Shelly Frasier"
+      ],
+      "series": "Tarzan",
+      "series_asin": "B007D1E690",
+      "series_position": "1",
+      "release_date": "2001-04-06",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B01GIO3GFW",
+      "title": "The Return of Tarzan",
+      "subtitle": null,
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Jeff Harding"
+      ],
+      "series": "Tarzan",
+      "series_asin": "B007D1E690",
+      "series_position": "2",
+      "release_date": "2016-06-14",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B081B7JM9F",
+      "title": "Little Women",
+      "subtitle": "An Audible Original Drama",
+      "authors": [
+        "Louisa May Alcott"
+      ],
+      "narrators": [
+        "Emily Bauer",
+        "Laura Dern",
+        "Lauren Fortgang",
+        "Allison Hiroto",
+        "Carly Robins",
+        "Suzanne Toren"
+      ],
+      "series": "Little Women",
+      "series_asin": "B06XW65DY5",
+      "series_position": "1",
+      "release_date": "2019-12-23",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B003750OH4",
+      "title": "Little Men",
+      "subtitle": null,
+      "authors": [
+        "Louisa May Alcott"
+      ],
+      "narrators": [
+        "Justine Eyre"
+      ],
+      "series": "Little Women",
+      "series_asin": "B06XW65DY5",
+      "series_position": "2",
+      "release_date": "2010-02-05",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B002V1CL4E",
+      "title": "The Princess and the Goblin",
+      "subtitle": "Presented by Blackstone",
+      "authors": [
+        "George MacDonald"
+      ],
+      "narrators": [
+        "Frederick Davidson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2007-01-19",
+      "language": "english",
+      "tags": [
+        "title-collision"
+      ]
+    },
+    {
+      "asin": "B003KS7JYO",
+      "title": "Phineas Finn",
+      "subtitle": null,
+      "authors": [
+        "Anthony Trollope"
+      ],
+      "narrators": [
+        "Timothy West"
+      ],
+      "series": "The Pallisers",
+      "series_asin": "B006K1NMVW",
+      "series_position": "2",
+      "release_date": "2010-05-06",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B0C6FJ6L34",
+      "title": "Peter Pan in Kensington Gardens",
+      "subtitle": null,
+      "authors": [
+        "James M. Barrie"
+      ],
+      "narrators": [
+        "Robin Nixon"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2023-05-30",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "author-variant"
+      ]
+    },
+    {
+      "asin": "B084J9S79P",
+      "title": "Peter and Wendy",
+      "subtitle": null,
+      "authors": [
+        "J.M. Barrie"
+      ],
+      "narrators": [
+        "Laura Eastwood"
+      ],
+      "series": "Peter Pan",
+      "series_asin": "B07W68C8J5",
+      "series_position": "3",
+      "release_date": "2020-02-06",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "author-variant",
+        "series"
+      ]
+    },
+    {
+      "asin": "B01BKS3DPE",
+      "title": "The Gods of Mars",
+      "subtitle": "Barsoom Series, Book 2",
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Alastair Cameron"
+      ],
+      "series": "Barsoom",
+      "series_asin": "B007D0J4H0",
+      "series_position": "2",
+      "release_date": "2016-02-09",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B01DPXZKPI",
+      "title": "The Warlord of Mars",
+      "subtitle": "Barsoom Series, Book 3",
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Alastair Cameron"
+      ],
+      "series": "Barsoom",
+      "series_asin": "B007D0J4H0",
+      "series_position": "3",
+      "release_date": "2016-04-04",
+      "language": "english",
+      "tags": [
+        "title-collision",
+        "series"
+      ]
+    },
+    {
+      "asin": "B002V59S7S",
+      "title": "Sherlock Holmes: A Study in Scarlet",
+      "subtitle": "A Study in Scarlet",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "narrators": [
+        "Frederick Davidson"
+      ],
+      "series": "Sherlock Holmes",
+      "series_asin": "B08376S3R2",
+      "series_position": "1",
+      "release_date": "2000-10-20",
+      "language": "english",
+      "tags": [
+        "subtitle",
+        "series"
+      ]
+    },
+    {
+      "asin": "B0036I51QQ",
+      "title": "The Sign of Four",
+      "subtitle": "A Sherlock Holmes Novel",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "narrators": [
+        "Simon Prebble"
+      ],
+      "series": "Sherlock Holmes",
+      "series_asin": "B08376S3R2",
+      "series_position": "2",
+      "release_date": "2009-11-30",
+      "language": "english",
+      "tags": [
+        "subtitle",
+        "series"
+      ]
+    },
+    {
+      "asin": "B0036I522E",
+      "title": "The Adventures of Sherlock Holmes",
+      "subtitle": null,
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "narrators": [
+        "Simon Prebble"
+      ],
+      "series": "Sherlock Holmes",
+      "series_asin": "B08376S3R2",
+      "series_position": "3",
+      "release_date": "2010-01-13",
+      "language": "english",
+      "tags": [
+        "series",
+        "series-order"
+      ]
+    },
+    {
+      "asin": "B0036HXZCO",
+      "title": "The Hound of the Baskervilles",
+      "subtitle": "A Sherlock Holmes Novel",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "narrators": [
+        "Simon Prebble"
+      ],
+      "series": "Sherlock Holmes",
+      "series_asin": "B08376S3R2",
+      "series_position": "5",
+      "release_date": "2009-11-30",
+      "language": "english",
+      "tags": [
+        "series",
+        "series-order"
+      ]
+    },
+    {
+      "asin": "B002UUFXKU",
+      "title": "The Valley of Fear",
+      "subtitle": null,
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "narrators": [
+        "John Bolen"
+      ],
+      "series": "Sherlock Holmes",
+      "series_asin": "B08376S3R2",
+      "series_position": "7",
+      "release_date": "2006-09-29",
+      "language": "english",
+      "tags": [
+        "series",
+        "series-order"
+      ]
+    },
+    {
+      "asin": "B002VAAA6G",
+      "title": "Uncle Tom's Cabin",
+      "subtitle": null,
+      "authors": [
+        "Harriet Beecher Stowe"
+      ],
+      "narrators": [
+        "Richard Allen"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2008-12-29",
+      "language": "english",
+      "tags": [
+        "subtitle"
+      ]
+    },
+    {
+      "asin": "B002V5CW08",
+      "title": "Robinson Crusoe",
+      "subtitle": null,
+      "authors": [
+        "Daniel Defoe"
+      ],
+      "narrators": [
+        "Simon Vance"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2008-12-01",
+      "language": "english",
+      "tags": [
+        "subtitle"
+      ]
+    },
+    {
+      "asin": "B015D78L0U",
+      "title": "Alice's Adventures in Wonderland",
+      "subtitle": null,
+      "authors": [
+        "Lewis Carroll"
+      ],
+      "narrators": [
+        "Scarlett Johansson"
+      ],
+      "series": "Alice in Wonderland",
+      "series_asin": "B06XS5KCT4",
+      "series_position": "1",
+      "release_date": "2016-02-23",
+      "language": "english",
+      "tags": [
+        "subtitle",
+        "pseudonym",
+        "series"
+      ]
+    },
+    {
+      "asin": "B0036N9OKA",
+      "title": "Moby Dick",
+      "subtitle": null,
+      "authors": [
+        "Herman Melville"
+      ],
+      "narrators": [
+        "Anthony Heald"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2002-12-29",
+      "language": "english",
+      "tags": [
+        "subtitle",
+        "punctuation"
+      ]
+    },
+    {
+      "asin": "B01AGYIKG0",
+      "title": "Around the World in Eighty Days",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Bill Homewood"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2016-01-13",
+      "language": "english",
+      "tags": [
+        "numeral"
+      ]
+    },
+    {
+      "asin": "B002VA3DLK",
+      "title": "Around the World in 80 Days",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Walter Covell"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2008-02-21",
+      "language": "english",
+      "tags": [
+        "numeral"
+      ]
+    },
+    {
+      "asin": "B09HJHRGWQ",
+      "title": "813",
+      "subtitle": "Arsène Lupin Series, Book 4",
+      "authors": [
+        "Maurice Leblanc"
+      ],
+      "narrators": [
+        "B.J. Harrison"
+      ],
+      "series": "Arsène Lupin",
+      "series_asin": "B014K0JKI8",
+      "series_position": "4",
+      "release_date": "2021-10-11",
+      "language": "english",
+      "tags": [
+        "numeral",
+        "punctuation",
+        "series"
+      ]
+    },
+    {
+      "asin": "B0GLJYD7RL",
+      "title": "The Extraordinary Adventures of Arsène Lupin, Gentleman-Burglar",
+      "subtitle": "Further Adventures of Arsène Lupin, Book 1",
+      "authors": [
+        "Maurice Leblanc"
+      ],
+      "narrators": [
+        "Brady Smith"
+      ],
+      "series": "Arsène Lupin",
+      "series_asin": "B014K0JKI8",
+      "series_position": "1",
+      "release_date": "2026-02-06",
+      "language": "english",
+      "tags": [
+        "subtitle",
+        "diacritic",
+        "series"
+      ]
+    },
+    {
+      "asin": "B071S17YLK",
+      "title": "Pride and Prejudice",
+      "subtitle": null,
+      "authors": [
+        "Jane Austen"
+      ],
+      "narrators": [
+        "Karen Savage"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2017-05-12",
+      "language": "english",
+      "tags": [
+        "baseline"
+      ]
+    },
+    {
+      "asin": "B00D52SU5M",
+      "title": "Sara Crewe",
+      "subtitle": null,
+      "authors": [
+        "Frances Hodgson Burnett"
+      ],
+      "narrators": [
+        "Bobbie Frohman"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2013-06-04",
+      "language": "english",
+      "tags": [
+        "title-variant"
+      ]
+    },
+    {
+      "asin": "B002UZMQCI",
+      "title": "A Little Princess",
+      "subtitle": null,
+      "authors": [
+        "Frances Hodgson Burnett"
+      ],
+      "narrators": [
+        "Virginia Leishman"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "1999-12-16",
+      "language": "english",
+      "tags": [
+        "title-variant"
+      ]
+    },
+    {
+      "asin": "B0038G2TFW",
+      "title": "The Man in the Iron Mask",
+      "subtitle": null,
+      "authors": [
+        "Alexandre Dumas"
+      ],
+      "narrators": [
+        "Simon Vance"
+      ],
+      "series": "D'Artagnan: The Musketeers Cycle",
+      "series_asin": "B007C4SDU6",
+      "series_position": "6",
+      "release_date": "2010-02-17",
+      "language": "english",
+      "tags": [
+        "series",
+        "series-order"
+      ]
+    },
+    {
+      "asin": "B002V1CJIW",
+      "title": "From the Earth to the Moon",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Bernard Mayes"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2006-11-06",
+      "language": "english",
+      "tags": [
+        "series"
+      ]
+    },
+    {
+      "asin": "B0DKK1PKN7",
+      "title": "Around the Moon",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Matthew Llyod Davies"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2024-11-07",
+      "language": "english",
+      "tags": [
+        "title-variant"
+      ]
+    },
+    {
+      "asin": "B073JR7W68",
+      "title": "Anne of Green Gables",
+      "subtitle": null,
+      "authors": [
+        "L. M. Montgomery"
+      ],
+      "narrators": [
+        "Laurel Schroeder"
+      ],
+      "series": "Anne of Green Gables",
+      "series_asin": "B006K1O85G",
+      "series_position": "1",
+      "release_date": "2017-06-30",
+      "language": "english",
+      "tags": [
+        "series",
+        "author-variant"
+      ]
+    },
+    {
+      "asin": "B002V8L2UQ",
+      "title": "Anne of Avonlea",
+      "subtitle": null,
+      "authors": [
+        "Lucy Maud Montgomery"
+      ],
+      "narrators": [
+        "Shelly Frasier"
+      ],
+      "series": "Anne of Green Gables",
+      "series_asin": "B006K1O85G",
+      "series_position": "2",
+      "release_date": "2006-11-08",
+      "language": "english",
+      "tags": [
+        "series",
+        "author-variant"
+      ]
+    },
+    {
+      "asin": "B07TKCFMD1",
+      "title": "The Story of Doctor Dolittle",
+      "subtitle": null,
+      "authors": [
+        "Hugh Lofting"
+      ],
+      "narrators": [
+        "Alice Marti"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2019-06-26",
+      "language": "english",
+      "tags": [
+        "series"
+      ]
+    },
+    {
+      "asin": "B002V8OEG0",
+      "title": "The Voyages of Doctor Dolittle",
+      "subtitle": null,
+      "authors": [
+        "Hugh Lofting"
+      ],
+      "narrators": [
+        "William Sutherland"
+      ],
+      "series": "Doctor Dolittle",
+      "series_asin": "B07MFMHNHV",
+      "series_position": "2",
+      "release_date": "2004-10-04",
+      "language": "english",
+      "tags": [
+        "series"
+      ]
+    },
+    {
+      "asin": "B00NB9Q736",
+      "title": "The Hunchback of Notre Dame",
+      "subtitle": null,
+      "authors": [
+        "Victor Hugo"
+      ],
+      "narrators": [
+        "Bill Homewood"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2014-09-09",
+      "language": "english",
+      "tags": [
+        "punctuation"
+      ]
+    },
+    {
+      "asin": "B007RPQWCG",
+      "title": "The Time Machine",
+      "subtitle": null,
+      "authors": [
+        "H. G. Wells"
+      ],
+      "narrators": [
+        "Alan Munro"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2012-04-06",
+      "language": "english",
+      "tags": [
+        "author-initials",
+        "author-collision"
+      ]
+    },
+    {
+      "asin": "B07D1BVGWR",
+      "title": "A Room with a View",
+      "subtitle": null,
+      "authors": [
+        "E. M. Forster"
+      ],
+      "narrators": [
+        "Rebecca Hall"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2018-07-19",
+      "language": "english",
+      "tags": [
+        "author-initials"
+      ]
+    },
+    {
+      "asin": "B00LW3J8RA",
+      "title": "Dagon",
+      "subtitle": null,
+      "authors": [
+        "H. P. Lovecraft"
+      ],
+      "narrators": [
+        "John W. Michaels"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2014-07-18",
+      "language": "english",
+      "tags": [
+        "author-initials",
+        "pd-caveat"
+      ]
+    },
+    {
+      "asin": "B01COOZ5C2",
+      "title": "Jane Eyre",
+      "subtitle": null,
+      "authors": [
+        "Charlotte Brontë"
+      ],
+      "narrators": [
+        "Thandiwe Newton"
+      ],
+      "series": "Jane Eyre",
+      "series_asin": "B0CB9D5GMM",
+      "series_position": "1",
+      "release_date": "2016-04-17",
+      "language": "english",
+      "tags": [
+        "author-collision",
+        "diacritic"
+      ]
+    },
+    {
+      "asin": "B0186DGBCI",
+      "title": "Wuthering Heights",
+      "subtitle": null,
+      "authors": [
+        "Emily Brontë"
+      ],
+      "narrators": [
+        "Juliet Stevenson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2015-11-19",
+      "language": "english",
+      "tags": [
+        "author-collision",
+        "diacritic"
+      ]
+    },
+    {
+      "asin": "B002V8N2QS",
+      "title": "Agnes Grey",
+      "subtitle": null,
+      "authors": [
+        "Anne Brontë"
+      ],
+      "narrators": [
+        "Emilia Fox"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2008-10-09",
+      "language": "english",
+      "tags": [
+        "author-collision",
+        "diacritic"
+      ]
+    },
+    {
+      "asin": "B01DPV47HM",
+      "title": "Grimm's Fairy Tales",
+      "subtitle": null,
+      "authors": [
+        "Brothers Grimm"
+      ],
+      "narrators": [
+        "Jim Dale",
+        "Janis Ian",
+        "Alfred Molina",
+        "Katherine Kellgren"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2016-05-10",
+      "language": "english",
+      "tags": [
+        "author-collision",
+        "multi-author"
+      ]
+    },
+    {
+      "asin": "B01ATTZF38",
+      "title": "The Turn of the Screw",
+      "subtitle": null,
+      "authors": [
+        "Henry James"
+      ],
+      "narrators": [
+        "Emma Thompson",
+        "Richard Armitage - introduction"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2016-03-15",
+      "language": "english",
+      "tags": [
+        "author-collision"
+      ]
+    },
+    {
+      "asin": "B004FOLXEO",
+      "title": "Ghost Stories of an Antiquary",
+      "subtitle": null,
+      "authors": [
+        "M. R. James"
+      ],
+      "narrators": [
+        "David Timson",
+        "Stephen Critchlow"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2010-12-09",
+      "language": "english",
+      "tags": [
+        "author-collision",
+        "author-initials"
+      ]
+    },
+    {
+      "asin": "B0057AOV4Y",
+      "title": "The Adventures of Huckleberry Finn",
+      "subtitle": null,
+      "authors": [
+        "Mark Twain"
+      ],
+      "narrators": [
+        "Robin Field"
+      ],
+      "series": "Twain's Tom and Huck",
+      "series_asin": "B006K1NSQQ",
+      "series_position": "2",
+      "release_date": "2011-06-23",
+      "language": "english",
+      "tags": [
+        "pseudonym",
+        "series"
+      ]
+    },
+    {
+      "asin": "B004S7ANSU",
+      "title": "Middlemarch",
+      "subtitle": null,
+      "authors": [
+        "George Eliot"
+      ],
+      "narrators": [
+        "Juliet Stevenson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2011-03-17",
+      "language": "english",
+      "tags": [
+        "pseudonym"
+      ]
+    },
+    {
+      "asin": "B0051PPZVI",
+      "title": "The Chronicles of Clovis",
+      "subtitle": null,
+      "authors": [
+        "Hector Hugh Munro (Saki)"
+      ],
+      "narrators": [
+        "Cathy Dobson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2011-05-20",
+      "language": "english",
+      "tags": [
+        "pseudonym"
+      ]
+    },
+    {
+      "asin": "B002UZN8HK",
+      "title": "The Four Million",
+      "subtitle": null,
+      "authors": [
+        "O. Henry"
+      ],
+      "narrators": [
+        "Walter Zimmerman",
+        "Jim Roberts",
+        "Cindy Hardin Killavey",
+        "Walter Covell",
+        "Jack Benson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2008-07-15",
+      "language": "english",
+      "tags": [
+        "pseudonym"
+      ]
+    },
+    {
+      "asin": "B007ZEANIS",
+      "title": "O. Henry: Complete Short Stories Collection",
+      "subtitle": null,
+      "authors": [
+        "O. Henry",
+        "William Sydney Porter"
+      ],
+      "narrators": [
+        "Bob Thomley"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2012-05-02",
+      "language": "english",
+      "tags": [
+        "pseudonym",
+        "multi-author"
+      ]
+    },
+    {
+      "asin": "B076PQXBV7",
+      "title": "Around the World in Eighty Days (AmazonClassics Edition)",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne",
+        "George Makepeace Towle - translator"
+      ],
+      "narrators": [
+        "David Colacci"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2017-11-21",
+      "language": "english",
+      "tags": [
+        "translator",
+        "multi-author"
+      ]
+    },
+    {
+      "asin": "B002V9ZF3K",
+      "title": "Crime and Punishment",
+      "subtitle": null,
+      "authors": [
+        "Fyodor Dostoevsky",
+        "Constance Garnett - translator"
+      ],
+      "narrators": [
+        "Anthony Heald"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2007-12-03",
+      "language": "english",
+      "tags": [
+        "translator",
+        "transliteration"
+      ]
+    },
+    {
+      "asin": "B002V0PVJC",
+      "title": "War and Peace",
+      "subtitle": null,
+      "authors": [
+        "Leo Tolstoy"
+      ],
+      "narrators": [
+        "Frederick Davidson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2005-01-21",
+      "language": "english",
+      "tags": [
+        "translator"
+      ]
+    },
+    {
+      "asin": "B00XLZ2H3E",
+      "title": "Germinal",
+      "subtitle": null,
+      "authors": [
+        "Émile Zola"
+      ],
+      "narrators": [
+        "Leighton Pugh"
+      ],
+      "series": "Rougon-Macquart",
+      "series_asin": "B01MY0BHCB",
+      "series_position": "13",
+      "release_date": "2015-05-22",
+      "language": "english",
+      "tags": [
+        "diacritic",
+        "series"
+      ]
+    },
+    {
+      "asin": "B086XLJJ33",
+      "title": "R.U.R. (Rossum's Universal Robots)",
+      "subtitle": null,
+      "authors": [
+        "Karel Capek"
+      ],
+      "narrators": [
+        "Ellis Freeman"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2020-04-11",
+      "language": "english",
+      "tags": [
+        "diacritic",
+        "punctuation"
+      ]
+    },
+    {
+      "asin": "B00S710A4U",
+      "title": "The Odyssey",
+      "subtitle": null,
+      "authors": [
+        "Homer",
+        "Samuel Butler - translator"
+      ],
+      "narrators": [
+        "Roger Rees"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2015-01-14",
+      "language": "english",
+      "tags": [
+        "mononym",
+        "translator",
+        "multi-author"
+      ]
+    },
+    {
+      "asin": "B09PML71M1",
+      "title": "Essays",
+      "subtitle": null,
+      "authors": [
+        "Francis Bacon"
+      ],
+      "narrators": [
+        "David Timson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2022-01-08",
+      "language": "english",
+      "tags": [
+        "common-word-author"
+      ]
+    },
+    {
+      "asin": "B0049CGKLI",
+      "title": "Candide (AudioGO Edition)",
+      "subtitle": null,
+      "authors": [
+        "Voltaire"
+      ],
+      "narrators": [
+        "Jack Davenport"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2010-11-01",
+      "language": "english",
+      "tags": [
+        "mononym",
+        "pseudonym"
+      ]
+    }
+  ]
+}

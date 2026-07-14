@@ -1,0 +1,14 @@
+build/
+.venv/
+__pycache__/
+*.pyc
+*.m4b
+*.mp3
+*.flac
+*.m4a
+*.aac
+*.ogg
+*.opus
+*.wav
+CLAUDE.local.md
+session-state.md

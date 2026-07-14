@@ -30,6 +30,18 @@ OUT = ROOT / "corpus" / "corpus.json"
 # Anything not listed there is a US-catalogue ASIN.
 DEFAULT_REGION = "us"
 
+
+# Some ASINs live only in a non-US catalogue. build() looks the region up here;
+# anything absent is a US-catalogue ASIN. (Distinct from REGIONAL_SEEDS, which
+# ASSERTS mutual invisibility across regions -- these are just "fetch me from there".)
+REGION_OVERRIDES: dict[str, str] = {
+    "B0F48KS3BX": "fr", "B008WB1L70": "fr", "B008Q3A6JI": "fr", "B0DY31J772": "fr",
+    "B00B4FPVR2": "de", "B00UXEBBIS": "de", "B00T9V0BU0": "de",
+    "B00EOO99WS": "de", "B0DZXWPQNW": "de", "B00JQEQFL4": "de", "B00APWL9E4": "de",
+    "B01IDLCAMI": "de", "B004V5UU0A": "de", "B0B1QKNWH3": "de", "B0899BQL13": "de",
+    "B08SQ3S34B": "de", "B00769TAK4": "de",
+}
+
 # (asin, expect_author_substr, expect_title_substr, tags)
 # `tags` name the failure modes this book is useful for. See cases.py.
 SEEDS: list[tuple[str, str, str, list[str]]] = [
@@ -110,6 +122,65 @@ SEEDS: list[tuple[str, str, str, list[str]]] = [
     ("B00S710A4U", "Homer", "Odyssey", ["mononym", "translator", "multi-author"]),
     ("B09PML71M1", "Bacon", "Essays", ["common-word-author"]),
     ("B0049CGKLI", "Voltaire", "Candide", ["mononym", "pseudonym"]),
+
+    # --- series structure: position is a STRING and is not always a number -----
+    # These five underpin a proven bug: decimal.TryParse silently discards a real,
+    # present position, after which naming cannot tell it from "no position at all".
+    ("B00CQ5WAXW", "Haggard", "She And Allan", ["series-dual", "series-order", "title-collision"]),
+    ("B0F84DFZ66", "Chesterton", "Father Brown", ["series-range", "omnibus"]),
+    ("B002V1PLZK", "Buchan", "Thirty-Nine Steps", ["series-range", "omnibus", "title-lies"]),
+    ("B004Q1EFJQ", "Bennett", "Anna of the Five Towns", ["series-no-position"]),
+    ("B077SHDLW9", "Hornung", "Amateur Cracksman", ["series-absent"]),
+
+    # --- language / region / edition: many ASINs, one work ---------------------
+    ("B0F48KS3BX", "Verne", "", ["non-english", "multi-asin"]),
+    ("B008WB1L70", "Verne", "", ["non-english", "abridged", "multi-asin"]),
+    ("B008Q3A6JI", "Verne", "", ["non-english", "full-cast", "multi-asin"]),
+    ("B0DY31J772", "Verne", "", ["cross-region-language", "multi-asin"]),
+    ("B00TPW1FLM", "", "", ["non-english", "multi-asin"]),
+    ("B00TDZQG3I", "", "", ["non-english", "multi-narrator", "multi-asin"]),
+    ("B01LFD0GWM", "", "", ["multi-asin"]),
+    ("B01MU7YH84", "", "", ["full-cast", "multi-asin"]),
+    ("B00B4FPVR2", "Grimm", "", ["non-english", "region-lock", "multi-asin"]),
+    ("B00UXEBBIS", "Grimm", "", ["non-english", "multi-asin"]),
+    ("B00TPKF9QQ", "Grimm", "", ["non-english", "multi-asin"]),
+    ("B00T9V0BU0", "", "", ["non-english", "multi-asin"]),
+    ("B00EOO99WS", "Goethe", "Faust", ["non-english", "multi-asin"]),
+    ("B0DZXWPQNW", "Goethe", "Faust", ["non-english", "multi-asin"]),
+    ("B00JQEQFL4", "Goethe", "Faust", ["non-english", "abridged", "multi-asin"]),
+    ("B00APWL9E4", "Goethe", "Faust", ["non-english", "abridged", "multi-asin"]),
+    ("B01IDLCAMI", "Goethe", "Faust", ["non-english", "abridged", "multi-asin"]),
+    ("B004V5UU0A", "Goethe", "Faust", ["non-english", "multi-asin"]),
+    ("B0B1QKNWH3", "Goethe", "Faust", ["non-english", "radio-play", "multi-asin"]),
+    ("B0899BQL13", "Goethe", "Faust", ["non-english", "full-cast", "multi-asin"]),
+    ("B08SQ3S34B", "Goethe", "Faust", ["non-english", "full-cast", "multi-asin"]),
+    ("B00769TAK4", "Goethe", "Faust", ["cross-region-language", "multi-asin"]),
+    ("B08527ZZZD", "Cervantes", "Quijote", ["non-english", "multi-asin"]),
+    ("B07YXBJSVG", "Cervantes", "Quijote", ["non-english", "multi-narrator", "multi-asin"]),
+    ("B07YP3R658", "Cervantes", "Quijote", ["non-english", "abridged", "full-cast"]),
+    ("B003F6JXC2", "", "", ["non-english", "multi-asin"]),
+    ("B07B7MCLB3", "", "", ["non-english", "multi-asin"]),
+    ("B07RGRBKS5", "", "", ["non-english", "title-one-letter-apart"]),
+    ("B00BYIJW6A", "", "", ["non-english", "abridged", "title-one-letter-apart"]),
+    ("B006GDCIY6", "Tolstoy", "", ["non-english", "multi-asin"]),
+    ("B08BTM5TDG", "", "", ["cyrillic", "non-english", "multi-part"]),
+    ("B08BV2RNS9", "", "", ["cyrillic", "non-english", "multi-part"]),
+    ("B08BTZVGS8", "", "", ["cyrillic", "non-english", "multi-part"]),
+    ("B006C692NM", "Tolstoy", "", ["non-english", "multi-asin"]),
+
+    # --- pathological metadata: dangerous to write to a filesystem -------------
+    ("B08ML2HVVW", "Defoe", "", ["shell-metachars", "omnibus", "long-title"]),
+    ("B003AAAU7U", "Trollope", "Forgive Her", ["question-mark"]),
+    ("B06VVP98S5", "Collins", "", ["question-mark", "short-title"]),
+    ("B005FGR77S", "Bierce", "Can Such Things Be", ["question-mark"]),
+    ("B0B441BXY3", "Trollope", "Popenjoy", ["question-mark"]),
+    ("B09SZD5QKH", "Sinclair", "", ["percent-sign", "numeric-title"]),
+    ("B002UUON10", "Kipling", "Stalky", ["trailing-dot"]),
+    ("B005R353GG", "Defoe", "Captain Singleton", ["long-title"]),
+    ("B0DNRK5BY1", "", "Cloud of Unknowing", ["anonymous-author"]),
+    ("B002V9Z9WW", "Kipling", "", ["short-title", "all-caps"]),
+    ("B0CTK91XJ6", "", "", ["cyrillic", "non-latin-author", "byte-length"]),
+    ("B0B5Z12CCM", "", "", ["cjk", "non-latin-author", "byte-length"]),
 ]
 
 
@@ -200,7 +271,8 @@ def build() -> tuple[list[dict], list[str]]:
     problems: list[str] = []
 
     for asin, want_author, want_title, tags in SEEDS:
-        data, err = fetch(asin)
+        region = REGION_OVERRIDES.get(asin, DEFAULT_REGION)
+        data, err = fetch(asin, region)
         if data is None:
             problems.append(f"{asin}: unresolvable ({err})")
             print(f"  DEAD      {asin}  ({err})", file=sys.stderr)
@@ -234,6 +306,7 @@ def build() -> tuple[list[dict], list[str]]:
                 "series_position": series.get("position") or None,
                 "release_date": (data.get("releaseDate") or "")[:10] or None,
                 "language": data.get("language") or None,
+                "region": region,
                 "tags": tags,
             }
         )

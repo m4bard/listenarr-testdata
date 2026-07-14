@@ -15,6 +15,7 @@
       "series_position": "1",
       "release_date": "2012-06-23",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "series"
@@ -35,6 +36,7 @@
       "series_position": "1",
       "release_date": "2017-04-24",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "series"
@@ -55,6 +57,7 @@
       "series_position": "1",
       "release_date": "2016-05-13",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "numeral"
@@ -75,6 +78,7 @@
       "series_position": "1",
       "release_date": "2017-10-24",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "numeral"
@@ -95,6 +99,7 @@
       "series_position": "1",
       "release_date": "2012-03-08",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "series"
@@ -115,6 +120,7 @@
       "series_position": "1",
       "release_date": "2008-01-04",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "series"
@@ -135,6 +141,7 @@
       "series_position": "1",
       "release_date": "2009-03-03",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "series"
@@ -155,6 +162,7 @@
       "series_position": "1",
       "release_date": "2007-05-24",
       "language": "english",
+      "region": "us",
       "tags": [
         "work-key",
         "series"
@@ -175,6 +183,7 @@
       "series_position": "2",
       "release_date": "2013-02-19",
       "language": "english",
+      "region": "us",
       "tags": [
         "series"
       ]
@@ -194,6 +203,7 @@
       "series_position": "1",
       "release_date": "2011-05-03",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "subtitle"
@@ -214,6 +224,7 @@
       "series_position": "15",
       "release_date": "2012-09-07",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision"
       ]
@@ -233,6 +244,7 @@
       "series_position": "1",
       "release_date": "2003-05-13",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series-order"
@@ -260,6 +272,7 @@
       "series_position": "1",
       "release_date": "2014-10-22",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -280,6 +293,7 @@
       "series_position": "2",
       "release_date": "2016-08-09",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -300,6 +314,7 @@
       "series_position": null,
       "release_date": "2003-09-11",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision"
       ]
@@ -319,6 +334,7 @@
       "series_position": null,
       "release_date": "2023-05-25",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision"
       ]
@@ -338,6 +354,7 @@
       "series_position": "1",
       "release_date": "2001-04-06",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -358,6 +375,7 @@
       "series_position": "2",
       "release_date": "2016-06-14",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -383,6 +401,7 @@
       "series_position": "1",
       "release_date": "2019-12-23",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -403,6 +422,7 @@
       "series_position": "2",
       "release_date": "2010-02-05",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -423,6 +443,7 @@
       "series_position": null,
       "release_date": "2007-01-19",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision"
       ]
@@ -442,6 +463,7 @@
       "series_position": "2",
       "release_date": "2010-05-06",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -462,6 +484,7 @@
       "series_position": null,
       "release_date": "2023-05-30",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "author-variant"
@@ -482,6 +505,7 @@
       "series_position": "3",
       "release_date": "2020-02-06",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "author-variant",
@@ -503,6 +527,7 @@
       "series_position": "2",
       "release_date": "2016-02-09",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -523,6 +548,7 @@
       "series_position": "3",
       "release_date": "2016-04-04",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-collision",
         "series"
@@ -543,6 +569,7 @@
       "series_position": "1",
       "release_date": "2000-10-20",
       "language": "english",
+      "region": "us",
       "tags": [
         "subtitle",
         "series"
@@ -563,6 +590,7 @@
       "series_position": "2",
       "release_date": "2009-11-30",
       "language": "english",
+      "region": "us",
       "tags": [
         "subtitle",
         "series"
@@ -583,6 +611,7 @@
       "series_position": "3",
       "release_date": "2010-01-13",
       "language": "english",
+      "region": "us",
       "tags": [
         "series",
         "series-order"
@@ -603,6 +632,7 @@
       "series_position": "5",
       "release_date": "2009-11-30",
       "language": "english",
+      "region": "us",
       "tags": [
         "series",
         "series-order"
@@ -623,6 +653,7 @@
       "series_position": "7",
       "release_date": "2006-09-29",
       "language": "english",
+      "region": "us",
       "tags": [
         "series",
         "series-order"
@@ -643,6 +674,7 @@
       "series_position": null,
       "release_date": "2008-12-29",
       "language": "english",
+      "region": "us",
       "tags": [
         "subtitle"
       ]
@@ -662,6 +694,7 @@
       "series_position": null,
       "release_date": "2008-12-01",
       "language": "english",
+      "region": "us",
       "tags": [
         "subtitle"
       ]
@@ -681,6 +714,7 @@
       "series_position": "1",
       "release_date": "2016-02-23",
       "language": "english",
+      "region": "us",
       "tags": [
         "subtitle",
         "pseudonym",
@@ -702,6 +736,7 @@
       "series_position": null,
       "release_date": "2002-12-29",
       "language": "english",
+      "region": "us",
       "tags": [
         "subtitle",
         "punctuation"
@@ -722,6 +757,7 @@
       "series_position": null,
       "release_date": "2016-01-13",
       "language": "english",
+      "region": "us",
       "tags": [
         "numeral"
       ]
@@ -741,6 +777,7 @@
       "series_position": null,
       "release_date": "2008-02-21",
       "language": "english",
+      "region": "us",
       "tags": [
         "numeral"
       ]
@@ -760,6 +797,7 @@
       "series_position": "4",
       "release_date": "2021-10-11",
       "language": "english",
+      "region": "us",
       "tags": [
         "numeral",
         "punctuation",
@@ -781,6 +819,7 @@
       "series_position": "1",
       "release_date": "2026-02-06",
       "language": "english",
+      "region": "us",
       "tags": [
         "subtitle",
         "diacritic",
@@ -802,6 +841,7 @@
       "series_position": null,
       "release_date": "2017-05-12",
       "language": "english",
+      "region": "us",
       "tags": [
         "baseline"
       ]
@@ -821,6 +861,7 @@
       "series_position": null,
       "release_date": "2013-06-04",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-variant"
       ]
@@ -840,6 +881,7 @@
       "series_position": null,
       "release_date": "1999-12-16",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-variant"
       ]
@@ -859,6 +901,7 @@
       "series_position": "6",
       "release_date": "2010-02-17",
       "language": "english",
+      "region": "us",
       "tags": [
         "series",
         "series-order"
@@ -879,6 +922,7 @@
       "series_position": null,
       "release_date": "2006-11-06",
       "language": "english",
+      "region": "us",
       "tags": [
         "series"
       ]
@@ -898,6 +942,7 @@
       "series_position": null,
       "release_date": "2024-11-07",
       "language": "english",
+      "region": "us",
       "tags": [
         "title-variant"
       ]
@@ -917,6 +962,7 @@
       "series_position": "1",
       "release_date": "2017-06-30",
       "language": "english",
+      "region": "us",
       "tags": [
         "series",
         "author-variant"
@@ -937,6 +983,7 @@
       "series_position": "2",
       "release_date": "2006-11-08",
       "language": "english",
+      "region": "us",
       "tags": [
         "series",
         "author-variant"
@@ -957,6 +1004,7 @@
       "series_position": null,
       "release_date": "2019-06-26",
       "language": "english",
+      "region": "us",
       "tags": [
         "series"
       ]
@@ -976,6 +1024,7 @@
       "series_position": "2",
       "release_date": "2004-10-04",
       "language": "english",
+      "region": "us",
       "tags": [
         "series"
       ]
@@ -995,6 +1044,7 @@
       "series_position": null,
       "release_date": "2014-09-09",
       "language": "english",
+      "region": "us",
       "tags": [
         "punctuation"
       ]
@@ -1014,6 +1064,7 @@
       "series_position": null,
       "release_date": "2012-04-06",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-initials",
         "author-collision"
@@ -1034,6 +1085,7 @@
       "series_position": null,
       "release_date": "2018-07-19",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-initials"
       ]
@@ -1053,6 +1105,7 @@
       "series_position": null,
       "release_date": "2014-07-18",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-initials",
         "pd-caveat"
@@ -1073,6 +1126,7 @@
       "series_position": "1",
       "release_date": "2016-04-17",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-collision",
         "diacritic"
@@ -1093,6 +1147,7 @@
       "series_position": null,
       "release_date": "2015-11-19",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-collision",
         "diacritic"
@@ -1113,6 +1168,7 @@
       "series_position": null,
       "release_date": "2008-10-09",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-collision",
         "diacritic"
@@ -1136,6 +1192,7 @@
       "series_position": null,
       "release_date": "2016-05-10",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-collision",
         "multi-author"
@@ -1157,6 +1214,7 @@
       "series_position": null,
       "release_date": "2016-03-15",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-collision"
       ]
@@ -1177,6 +1235,7 @@
       "series_position": null,
       "release_date": "2010-12-09",
       "language": "english",
+      "region": "us",
       "tags": [
         "author-collision",
         "author-initials"
@@ -1197,6 +1256,7 @@
       "series_position": "2",
       "release_date": "2011-06-23",
       "language": "english",
+      "region": "us",
       "tags": [
         "pseudonym",
         "series"
@@ -1217,6 +1277,7 @@
       "series_position": null,
       "release_date": "2011-03-17",
       "language": "english",
+      "region": "us",
       "tags": [
         "pseudonym"
       ]
@@ -1236,6 +1297,7 @@
       "series_position": null,
       "release_date": "2011-05-20",
       "language": "english",
+      "region": "us",
       "tags": [
         "pseudonym"
       ]
@@ -1259,6 +1321,7 @@
       "series_position": null,
       "release_date": "2008-07-15",
       "language": "english",
+      "region": "us",
       "tags": [
         "pseudonym"
       ]
@@ -1279,6 +1342,7 @@
       "series_position": null,
       "release_date": "2012-05-02",
       "language": "english",
+      "region": "us",
       "tags": [
         "pseudonym",
         "multi-author"
@@ -1300,6 +1364,7 @@
       "series_position": null,
       "release_date": "2017-11-21",
       "language": "english",
+      "region": "us",
       "tags": [
         "translator",
         "multi-author"
@@ -1321,6 +1386,7 @@
       "series_position": null,
       "release_date": "2007-12-03",
       "language": "english",
+      "region": "us",
       "tags": [
         "translator",
         "transliteration"
@@ -1341,6 +1407,7 @@
       "series_position": null,
       "release_date": "2005-01-21",
       "language": "english",
+      "region": "us",
       "tags": [
         "translator"
       ]
@@ -1360,6 +1427,7 @@
       "series_position": "13",
       "release_date": "2015-05-22",
       "language": "english",
+      "region": "us",
       "tags": [
         "diacritic",
         "series"
@@ -1380,6 +1448,7 @@
       "series_position": null,
       "release_date": "2020-04-11",
       "language": "english",
+      "region": "us",
       "tags": [
         "diacritic",
         "punctuation"
@@ -1401,6 +1470,7 @@
       "series_position": null,
       "release_date": "2015-01-14",
       "language": "english",
+      "region": "us",
       "tags": [
         "mononym",
         "translator",
@@ -1422,6 +1492,7 @@
       "series_position": null,
       "release_date": "2022-01-08",
       "language": "english",
+      "region": "us",
       "tags": [
         "common-word-author"
       ]
@@ -1441,9 +1512,1123 @@
       "series_position": null,
       "release_date": "2010-11-01",
       "language": "english",
+      "region": "us",
       "tags": [
         "mononym",
         "pseudonym"
+      ]
+    },
+    {
+      "asin": "B00CQ5WAXW",
+      "title": "She And Allan",
+      "subtitle": null,
+      "authors": [
+        "H. Rider Haggard"
+      ],
+      "narrators": [
+        "Barnaby Edwards"
+      ],
+      "series": "Ayesha",
+      "series_asin": "B01E633FQM",
+      "series_position": "0",
+      "release_date": "2013-05-13",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series-dual",
+        "series-order",
+        "title-collision"
+      ]
+    },
+    {
+      "asin": "B0F84DFZ66",
+      "title": "The Father Brown Collection: Books 1-4",
+      "subtitle": "The Innocence of Father Brown; The Wisdom of Father Brown; The Incredulity of Father Brown; & The Secret of Father Brown",
+      "authors": [
+        "G. K. Chesterton"
+      ],
+      "narrators": [
+        "Nicholas Boulton"
+      ],
+      "series": "Father Brown Mysteries",
+      "series_asin": "B006ULBMKA",
+      "series_position": "1-4",
+      "release_date": "2026-06-18",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series-range",
+        "omnibus"
+      ]
+    },
+    {
+      "asin": "B002V1PLZK",
+      "title": "The Thirty-Nine Steps",
+      "subtitle": null,
+      "authors": [
+        "John Buchan"
+      ],
+      "narrators": [
+        "David Case"
+      ],
+      "series": "Richard Hannay",
+      "series_asin": "B013VW5T5O",
+      "series_position": "1-2",
+      "release_date": "1999-12-15",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series-range",
+        "omnibus",
+        "title-lies"
+      ]
+    },
+    {
+      "asin": "B004Q1EFJQ",
+      "title": "Anna of the Five Towns",
+      "subtitle": null,
+      "authors": [
+        "Arnold Bennett"
+      ],
+      "narrators": [
+        "Peter Joyce"
+      ],
+      "series": "The Five Towns",
+      "series_asin": "B09JV54RXL",
+      "series_position": null,
+      "release_date": "2011-03-02",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series-no-position"
+      ]
+    },
+    {
+      "asin": "B077SHDLW9",
+      "title": "The Adventures of the Amateur Cracksman",
+      "subtitle": "A. J. Raffles, the Gentleman Thief 1",
+      "authors": [
+        "E. W. Hornung"
+      ],
+      "narrators": [
+        "Candle Swift"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2017-12-20",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series-absent"
+      ]
+    },
+    {
+      "asin": "B0F48KS3BX",
+      "title": "Vingt mille lieues sous les mers",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Noam Morgensztern"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2025-05-28",
+      "language": "french",
+      "region": "fr",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B008WB1L70",
+      "title": "Vingt mille lieues sous les mers",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Marc-André Coallier"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2005-04-01",
+      "language": "french",
+      "region": "fr",
+      "tags": [
+        "non-english",
+        "abridged",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B008Q3A6JI",
+      "title": "Vingt mille lieues sous les mers",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Jean Gabin",
+        "Jean-Pierre Lituac",
+        "Jean Galipeau"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2010-06-08",
+      "language": "french",
+      "region": "fr",
+      "tags": [
+        "non-english",
+        "full-cast",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B0DY31J772",
+      "title": "Vingt mille lieues sous les mers",
+      "subtitle": null,
+      "authors": [
+        "Jules Verne"
+      ],
+      "narrators": [
+        "Fabien Albanese"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2025-05-20",
+      "language": "english",
+      "region": "fr",
+      "tags": [
+        "cross-region-language",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00TPW1FLM",
+      "title": "Die Verwandlung",
+      "subtitle": null,
+      "authors": [
+        "Franz Kafka"
+      ],
+      "narrators": [
+        "Ulrich Matthes"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2009-04-16",
+      "language": "german",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00TDZQG3I",
+      "title": "Die Verwandlung",
+      "subtitle": null,
+      "authors": [
+        "Franz Kafka"
+      ],
+      "narrators": [
+        "Felix von Manteuffel"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2005-07-26",
+      "language": "german",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-narrator",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B01LFD0GWM",
+      "title": "The Metamorphosis",
+      "subtitle": null,
+      "authors": [
+        "Franz Kafka"
+      ],
+      "narrators": [
+        "David Barnes"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2016-09-07",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B01MU7YH84",
+      "title": "Metamorphosis",
+      "subtitle": null,
+      "authors": [
+        "Franz Kafka"
+      ],
+      "narrators": [
+        "Leanne Yau",
+        "Glenn Hascall",
+        "Linda Barrans",
+        "Ron Altman",
+        "Amanda Friday",
+        "Alan Weyman",
+        "Richard Andrews",
+        "K. G. Cross"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2017-01-06",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "full-cast",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00B4FPVR2",
+      "title": "Die schönsten Kinder- und Hausmärchen der Gebrüder Grimm",
+      "subtitle": null,
+      "authors": [
+        "Brüder Grimm"
+      ],
+      "narrators": [
+        "Ernst-August Schepmann"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2013-01-25",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "region-lock",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00UXEBBIS",
+      "title": "Sämtliche Kinder- und Hausmärchen",
+      "subtitle": null,
+      "authors": [
+        "Brüder Grimm"
+      ],
+      "narrators": [
+        "Thomas Dehler",
+        "Claudia Gräf"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2015-03-20",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00TPKF9QQ",
+      "title": "Gebrüder Grimm: Dornröschen (aus: \"Kinder- und Hausmärchen\")",
+      "subtitle": null,
+      "authors": [
+        "Brüder Grimm"
+      ],
+      "narrators": [
+        "Ernst-August Schepmann"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2013-01-25",
+      "language": "german",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00T9V0BU0",
+      "title": "Die schönsten Märchen",
+      "subtitle": null,
+      "authors": [
+        "Brüder Grimm"
+      ],
+      "narrators": [
+        "Stefan Wilkening",
+        "Miroslav Nemec",
+        "Jochen Striebeck",
+        "Juliane Köhler",
+        "Anna Thalbach"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2015-02-06",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00EOO99WS",
+      "title": "Faust",
+      "subtitle": "Der Tragödie erster Teil",
+      "authors": [
+        "Johann Wolfgang von Goethe"
+      ],
+      "narrators": [
+        "Rolf Günther"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2013-08-21",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B0DZXWPQNW",
+      "title": "Johann Wolfgang von Goethe - Faust. Die komplette Hörbuch Edition",
+      "subtitle": "Der Tragödier erster und zweiter Teil. Vollständig und ungekürzt vorgetragen.",
+      "authors": [
+        "Johann Wolfgang von Goethe"
+      ],
+      "narrators": [
+        "Jürgen Fritsche"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2025-03-20",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00JQEQFL4",
+      "title": "Faust",
+      "subtitle": "Der Tragödie Erster Teil",
+      "authors": [
+        "Johann Wolfgang von Goethe"
+      ],
+      "narrators": [
+        "Jürgen Goslar"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2014-04-16",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "abridged",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00APWL9E4",
+      "title": "Faust I",
+      "subtitle": null,
+      "authors": [
+        "Johann Wolfgang Goethe"
+      ],
+      "narrators": [
+        "Sebastian Rudolph"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2012-12-20",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "abridged",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B01IDLCAMI",
+      "title": "Faust I + II",
+      "subtitle": null,
+      "authors": [
+        "Johann Wolfgang von Goethe"
+      ],
+      "narrators": [
+        "Fred Düren",
+        "Jörg Gudzuhn",
+        "Dieter Mann"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2016-07-14",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "abridged",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B004V5UU0A",
+      "title": "Faust. Weltliteratur für Kinder",
+      "subtitle": null,
+      "authors": [
+        "Johann Wolfgang von Goethe",
+        "Barbara Kindermann"
+      ],
+      "narrators": [
+        "Joachim Meyerhoff"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2010-03-30",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B0B1QKNWH3",
+      "title": "Goethe.Faust. Der Tragödie Erster Teil",
+      "subtitle": "Reclam Hörspiel",
+      "authors": [
+        "Johann Wolfgang von Goethe"
+      ],
+      "narrators": [
+        "Hans Sigl"
+      ],
+      "series": "Reclam Hörspiele",
+      "series_asin": "B0B21W5HJ8",
+      "series_position": null,
+      "release_date": "2022-05-25",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "radio-play",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B0899BQL13",
+      "title": "Goethe - Faust 1",
+      "subtitle": "Die Gründgens-Inszenierung 1954",
+      "authors": [
+        "Johann Wolfgang von Goethe",
+        "Gustaf Gründgens"
+      ],
+      "narrators": [
+        "Ursula Dinggräfe",
+        "Gustaf Gründgens",
+        "Peter Esser",
+        "Karl Viebach",
+        "Kurt Weitkamp",
+        "Sybille Binder"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2020-05-28",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "full-cast",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B08SQ3S34B",
+      "title": "Goethe - Faust 2",
+      "subtitle": "Die Gründgens-Inszenierung 1959",
+      "authors": [
+        "Johann Wolfgang von Goethe"
+      ],
+      "narrators": [
+        "Gustaf Gründgens",
+        "Volker Brandt",
+        "Joseph Offenbach",
+        "Benno Gellenbeck",
+        "Ella Büchi",
+        "Elisabeth Goebel"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2021-01-12",
+      "language": "german",
+      "region": "de",
+      "tags": [
+        "non-english",
+        "full-cast",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B00769TAK4",
+      "title": "Faust",
+      "subtitle": null,
+      "authors": [
+        "Johann Wolfgang von Goethe"
+      ],
+      "narrators": [
+        "Tim Habeger"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2012-02-07",
+      "language": "english",
+      "region": "de",
+      "tags": [
+        "cross-region-language",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B08527ZZZD",
+      "title": "Don Quijote de la Mancha",
+      "subtitle": null,
+      "authors": [
+        "Miguel de Cervantes"
+      ],
+      "narrators": [
+        "Carlos Ramos"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2019-08-07",
+      "language": "spanish",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B07YXBJSVG",
+      "title": "Don Quijote de la Mancha",
+      "subtitle": null,
+      "authors": [
+        "Miguel de Cervantes"
+      ],
+      "narrators": [
+        "Eladio Ramos",
+        "Jesús Ramos"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2017-06-15",
+      "language": "spanish",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-narrator",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B07YP3R658",
+      "title": "Don Quijote de la Mancha",
+      "subtitle": null,
+      "authors": [
+        "Miguel de Cervantes"
+      ],
+      "narrators": [
+        "full cast"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2006-03-23",
+      "language": "spanish",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "abridged",
+        "full-cast"
+      ]
+    },
+    {
+      "asin": "B003F6JXC2",
+      "title": "La Divina Commedia [The Divine Comedy]",
+      "subtitle": null,
+      "authors": [
+        "Dante Alighieri"
+      ],
+      "narrators": [
+        "Silvia Cecchini"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2010-04-02",
+      "language": "italian",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B07B7MCLB3",
+      "title": "L'inferno di Dante",
+      "subtitle": null,
+      "authors": [
+        "Dante Alighieri",
+        "Vittorio Sermonti"
+      ],
+      "narrators": [
+        "Vittorio Sermonti"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2018-03-08",
+      "language": "italian",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B07RGRBKS5",
+      "title": "La Divina Comedia",
+      "subtitle": null,
+      "authors": [
+        "Dante Alighieri"
+      ],
+      "narrators": [
+        "Artur Mas"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2019-05-09",
+      "language": "spanish",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "title-one-letter-apart"
+      ]
+    },
+    {
+      "asin": "B00BYIJW6A",
+      "title": "La Divina Comedia [The Divine Comedy]",
+      "subtitle": null,
+      "authors": [
+        "Dante Alighieri"
+      ],
+      "narrators": [
+        "Carlos Celestre"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2013-03-22",
+      "language": "spanish",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "abridged",
+        "title-one-letter-apart"
+      ]
+    },
+    {
+      "asin": "B006GDCIY6",
+      "title": "War and Peace (Russian Edition)",
+      "subtitle": null,
+      "authors": [
+        "Leo Tolstoy"
+      ],
+      "narrators": [
+        "Evgeniy Ternovskiy"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2011-11-30",
+      "language": "russian",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B08BTM5TDG",
+      "title": "Война и мир 1",
+      "subtitle": null,
+      "authors": [
+        "Лев Толстой"
+      ],
+      "narrators": [
+        "Евгений Терновский"
+      ],
+      "series": "Война и мир",
+      "series_asin": "B08BTYYXXV",
+      "series_position": "1",
+      "release_date": "2020-06-25",
+      "language": "russian",
+      "region": "us",
+      "tags": [
+        "cyrillic",
+        "non-english",
+        "multi-part"
+      ]
+    },
+    {
+      "asin": "B08BV2RNS9",
+      "title": "Война и мир 2",
+      "subtitle": null,
+      "authors": [
+        "Лев Толстой"
+      ],
+      "narrators": [
+        "Евгений Терновский"
+      ],
+      "series": "Война и мир",
+      "series_asin": "B08BTYYXXV",
+      "series_position": "2",
+      "release_date": "2020-06-25",
+      "language": "russian",
+      "region": "us",
+      "tags": [
+        "cyrillic",
+        "non-english",
+        "multi-part"
+      ]
+    },
+    {
+      "asin": "B08BTZVGS8",
+      "title": "Война и мир 3",
+      "subtitle": null,
+      "authors": [
+        "Лев Толстой"
+      ],
+      "narrators": [
+        "Евгений Терновский"
+      ],
+      "series": "Война и мир",
+      "series_asin": "B08BTYYXXV",
+      "series_position": "3",
+      "release_date": "2020-06-25",
+      "language": "russian",
+      "region": "us",
+      "tags": [
+        "cyrillic",
+        "non-english",
+        "multi-part"
+      ]
+    },
+    {
+      "asin": "B006C692NM",
+      "title": "Anna Karenina [Russian Edition]",
+      "subtitle": null,
+      "authors": [
+        "Leo Tolstoy"
+      ],
+      "narrators": [
+        "Vyacheslav Gerasimov"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2011-11-22",
+      "language": "russian",
+      "region": "us",
+      "tags": [
+        "non-english",
+        "multi-asin"
+      ]
+    },
+    {
+      "asin": "B08ML2HVVW",
+      "title": "Daniel Defoe Box Set: A Journal of the Plague Year & The Apparition of Mrs. Veal",
+      "subtitle": null,
+      "authors": [
+        "Daniel Defoe"
+      ],
+      "narrators": [
+        "Museum Audiobooks cast"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2020-12-03",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "shell-metachars",
+        "omnibus",
+        "long-title"
+      ]
+    },
+    {
+      "asin": "B003AAAU7U",
+      "title": "Can You Forgive Her?",
+      "subtitle": null,
+      "authors": [
+        "Anthony Trollope"
+      ],
+      "narrators": [
+        "Timothy West"
+      ],
+      "series": "The Pallisers",
+      "series_asin": "B006K1NMVW",
+      "series_position": "1",
+      "release_date": "2010-02-26",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "question-mark"
+      ]
+    },
+    {
+      "asin": "B06VVP98S5",
+      "title": "Miss or Mrs.?",
+      "subtitle": null,
+      "authors": [
+        "Wilkie Collins"
+      ],
+      "narrators": [
+        "Flo Gibson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2017-02-15",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "question-mark",
+        "short-title"
+      ]
+    },
+    {
+      "asin": "B005FGR77S",
+      "title": "Can Such Things Be?",
+      "subtitle": null,
+      "authors": [
+        "Ambrose Bierce"
+      ],
+      "narrators": [
+        "Anthony Heald"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2011-08-02",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "question-mark"
+      ]
+    },
+    {
+      "asin": "B0B441BXY3",
+      "title": "Is He Popenjoy?",
+      "subtitle": null,
+      "authors": [
+        "Anthony Trollope"
+      ],
+      "narrators": [
+        "Nigel Patterson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2022-06-14",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "question-mark"
+      ]
+    },
+    {
+      "asin": "B09SZD5QKH",
+      "title": "100% - The Story of a Patriot",
+      "subtitle": null,
+      "authors": [
+        "Upton Sinclair"
+      ],
+      "narrators": [
+        "Lee Smalley"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2022-02-21",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "percent-sign",
+        "numeric-title"
+      ]
+    },
+    {
+      "asin": "B002UUON10",
+      "title": "Stalky and Co.",
+      "subtitle": null,
+      "authors": [
+        "Rudyard Kipling"
+      ],
+      "narrators": [
+        "Shelly Frasier"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2006-09-29",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "trailing-dot"
+      ]
+    },
+    {
+      "asin": "B005R353GG",
+      "title": "The Life, Adventures and Piracies of Captain Singleton",
+      "subtitle": null,
+      "authors": [
+        "Daniel Defoe"
+      ],
+      "narrators": [
+        "Eric Brooks"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2011-10-05",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "long-title"
+      ]
+    },
+    {
+      "asin": "B0DNRK5BY1",
+      "title": "The Cloud of Unknowing",
+      "subtitle": null,
+      "authors": [
+        "Anonymous"
+      ],
+      "narrators": [
+        "Nicholas Boulton"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2024-11-21",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "anonymous-author"
+      ]
+    },
+    {
+      "asin": "B002V9Z9WW",
+      "title": "IF",
+      "subtitle": null,
+      "authors": [
+        "Rudyard Kipling"
+      ],
+      "narrators": [
+        "Michael Caine"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2007-11-12",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "short-title",
+        "all-caps"
+      ]
+    },
+    {
+      "asin": "B0CTK91XJ6",
+      "title": "Белые ночи",
+      "subtitle": null,
+      "authors": [
+        "Федор Достоевский"
+      ],
+      "narrators": [
+        "Руслан Драпалюк"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2024-02-02",
+      "language": "russian",
+      "region": "us",
+      "tags": [
+        "cyrillic",
+        "non-latin-author",
+        "byte-length"
+      ]
+    },
+    {
+      "asin": "B0B5Z12CCM",
+      "title": "杜子春",
+      "subtitle": null,
+      "authors": [
+        "芥川 龍之介"
+      ],
+      "narrators": [
+        "村上 めぐみ"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2022-07-21",
+      "language": "japanese",
+      "region": "us",
+      "tags": [
+        "cjk",
+        "non-latin-author",
+        "byte-length"
       ]
     }
   ],

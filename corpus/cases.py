@@ -285,11 +285,14 @@ PATH_HAZARDS: list[PathHazard] = [
     ),
     PathHazard(
         key="component-length",
-        note="A single path COMPONENT over 255 bytes.",
-        hazard="ext4/APFS cap one component at 255 BYTES, not characters. Accented "
-               "characters cost 2 bytes in UTF-8, so a 200-character accented title "
-               "overflows. Real 18th-century full titles do this unaided.",
-        real_example="Defoe's full Robinson Crusoe title",
+        note="A single path COMPONENT over 255 BYTES. Note: bytes, not characters.",
+        hazard="ext4/APFS cap one component at 255 BYTES. UTF-8 is variable-width, so a "
+               "title that looks short can be long on disk — measured from real corpus "
+               "entries: 'Белые ночи' is 10 chars but 19 bytes; '杜子春' is 3 chars but "
+               "9 bytes. A CJK or Cyrillic title therefore overflows at roughly a THIRD "
+               "of the character count you would expect. Any length check written against "
+               "len(str) rather than len(str.encode()) is wrong.",
+        real_example="Defoe's full Robinson Crusoe title (long); Белые ночи, 杜子春 (dense)",
     ),
     PathHazard(
         key="total-path-length",

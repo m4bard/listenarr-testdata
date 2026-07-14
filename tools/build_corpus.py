@@ -25,6 +25,11 @@ AUDNEX = "https://api.audnex.us/books/{asin}"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "corpus" / "corpus.json"
 
+# An ASIN is per-marketplace. The same work carries a DIFFERENT ASIN in each region,
+# and an ASIN is simply absent (404) outside its own marketplace — see REGIONAL_SEEDS.
+# Anything not listed there is a US-catalogue ASIN.
+DEFAULT_REGION = "us"
+
 # (asin, expect_author_substr, expect_title_substr, tags)
 # `tags` name the failure modes this book is useful for. See cases.py.
 SEEDS: list[tuple[str, str, str, list[str]]] = [
@@ -108,10 +113,28 @@ SEEDS: list[tuple[str, str, str, list[str]]] = [
 ]
 
 
-def fetch(asin: str) -> tuple[dict | None, str | None]:
-    req = urllib.request.Request(
-        AUDNEX.format(asin=asin), headers={"User-Agent": "listenarr-testdata/1.0"}
-    )
+# Regional seeds: (asin, region, expect_author, expect_title, tags)
+#
+# These exist to prove a single point, and it is the most important one in the corpus:
+# THE SAME WORK HAS A DIFFERENT ASIN IN EACH MARKETPLACE, AND EACH ASIN 404s OUTSIDE ITS
+# OWN REGION. Grimm's Kinder- und Hausmärchen below is the proof — identical title,
+# author, narrator and language, two ASINs, and neither is visible from the other's
+# catalogue. An ASIN therefore cannot be a work identifier: it is a per-marketplace,
+# per-narrator manifestation id.
+#
+# This is a real, live gap in Listenarr: a user's file may carry the .de ASIN while the
+# record holds the .com one, and nothing reconciles them.
+REGIONAL_SEEDS: list[tuple[str, str, str, str, list[str]]] = [
+    ("B00B4FPO6A", "de", "Grimm", "Kinder- und Hausmärchen", ["region-lock", "work-key", "non-english"]),
+    ("B00TPKFANI", "us", "Grimm", "Kinder- und Hausmärchen", ["region-lock", "work-key", "non-english"]),
+]
+
+
+def fetch(asin: str, region: str = DEFAULT_REGION) -> tuple[dict | None, str | None]:
+    url = AUDNEX.format(asin=asin)
+    if region != DEFAULT_REGION:
+        url += f"?region={region}"
+    req = urllib.request.Request(url, headers={"User-Agent": "listenarr-testdata/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode()), None
@@ -119,6 +142,57 @@ def fetch(asin: str) -> tuple[dict | None, str | None]:
         return None, f"HTTP {exc.code}"
     except Exception as exc:  # noqa: BLE001
         return None, type(exc).__name__
+
+
+def check_region_lock() -> tuple[list[dict], list[str]]:
+    """Assert that each regional ASIN resolves ONLY in its own marketplace.
+
+    This is an assertion, not a lookup. If a regional ASIN ever becomes visible from
+    another region, the claim we make upstream — that an ASIN is per-marketplace — is
+    wrong, and we want to find that out here rather than in a pull request.
+    """
+    proofs: list[dict] = []
+    problems: list[str] = []
+    regions = sorted({region for _, region, _, _, _ in REGIONAL_SEEDS})
+
+    for asin, home, want_author, want_title, tags in REGIONAL_SEEDS:
+        row: dict = {"asin": asin, "home_region": home, "tags": tags, "visibility": {}}
+        for region in regions:
+            data, err = fetch(asin, region)
+            row["visibility"][region] = "ok" if data else (err or "unresolved")
+
+            if region == home:
+                if data is None:
+                    problems.append(f"{asin}: does NOT resolve in its own region '{home}' ({err})")
+                    continue
+                title = data.get("title") or ""
+                authors = ", ".join(a.get("name", "") for a in (data.get("authors") or []))
+                if want_author.lower() not in authors.lower() or want_title.lower() not in title.lower():
+                    problems.append(
+                        f"{asin} [{home}]: resolved to '{title}' by '{authors}', "
+                        f"expected '{want_title}' by '{want_author}'"
+                    )
+                    continue
+                row.update(
+                    title=title,
+                    authors=authors.split(", "),
+                    narrators=[n.get("name", "") for n in (data.get("narrators") or [])],
+                    language=data.get("language"),
+                )
+            elif data is not None:
+                # The whole point is that it should NOT be visible here.
+                problems.append(
+                    f"{asin}: expected to be invisible outside '{home}', "
+                    f"but it RESOLVES in '{region}' — the region-lock claim is broken"
+                )
+            time.sleep(0.25)
+
+        visible = [r for r, v in row["visibility"].items() if v == "ok"]
+        mark = "ok  " if visible == [home] else "BAD "
+        print(f"  {mark}      {asin}  [{home}]  visible in: {visible or 'nowhere'}")
+        proofs.append(row)
+
+    return proofs, problems
 
 
 def build() -> tuple[list[dict], list[str]]:
@@ -182,7 +256,13 @@ def main() -> int:
     print(f"verifying {len(SEEDS)} ASINs against api.audnex.us ...", file=sys.stderr)
     books, problems = build()
 
+    print(f"\nasserting region-lock on {len(REGIONAL_SEEDS)} regional ASINs ...", file=sys.stderr)
+    proofs, region_problems = check_region_lock()
+    problems += region_problems
+
     print(f"\n  resolved: {len(books)}/{len(SEEDS)}", file=sys.stderr)
+    print(f"  region-locked as expected: {len(proofs) - len(region_problems)}/{len(proofs)}",
+          file=sys.stderr)
     if problems:
         print("  PROBLEMS:", file=sys.stderr)
         for p in problems:
@@ -204,8 +284,15 @@ def main() -> int:
         return 1
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps({"books": books}, indent=2, ensure_ascii=False) + "\n")
-    print(f"\nwrote {OUT.relative_to(ROOT)} ({len(books)} books)", file=sys.stderr)
+    OUT.write_text(
+        json.dumps({"books": books, "region_lock_proof": proofs}, indent=2, ensure_ascii=False)
+        + "\n"
+    )
+    print(
+        f"\nwrote {OUT.relative_to(ROOT)} "
+        f"({len(books)} books, {len(proofs)} region-lock proofs)",
+        file=sys.stderr,
+    )
     return 0
 
 

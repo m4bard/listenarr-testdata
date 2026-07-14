@@ -1446,5 +1446,49 @@
         "pseudonym"
       ]
     }
+  ],
+  "region_lock_proof": [
+    {
+      "asin": "B00B4FPO6A",
+      "home_region": "de",
+      "tags": [
+        "region-lock",
+        "work-key",
+        "non-english"
+      ],
+      "visibility": {
+        "de": "ok",
+        "us": "HTTP 404"
+      },
+      "title": "Kinder- und Hausmärchen (Gesamtausgabe)",
+      "authors": [
+        "Brüder Grimm"
+      ],
+      "narrators": [
+        "Ernst-August Schepmann"
+      ],
+      "language": "german"
+    },
+    {
+      "asin": "B00TPKFANI",
+      "home_region": "us",
+      "tags": [
+        "region-lock",
+        "work-key",
+        "non-english"
+      ],
+      "visibility": {
+        "de": "HTTP 404",
+        "us": "ok"
+      },
+      "title": "Kinder- und Hausmärchen (Gesamtausgabe)",
+      "authors": [
+        "Brüder Grimm"
+      ],
+      "narrators": [
+        "Ernst-August Schepmann"
+      ],
+      "language": "german"
+    }
   ]
 }

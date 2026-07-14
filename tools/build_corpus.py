@@ -196,8 +196,10 @@ SEEDS: list[tuple[str, str, str, list[str]]] = [
 # This is a real, live gap in Listenarr: a user's file may carry the .de ASIN while the
 # record holds the .com one, and nothing reconciles them.
 REGIONAL_SEEDS: list[tuple[str, str, str, str, list[str]]] = [
-    ("B00B4FPO6A", "de", "Grimm", "Kinder- und Hausmärchen", ["region-lock", "work-key", "non-english"]),
-    ("B00TPKFANI", "us", "Grimm", "Kinder- und Hausmärchen", ["region-lock", "work-key", "non-english"]),
+    ("B00B4FPO6A", "de", "Grimm", "Kinder- und Hausmärchen",
+     ["region-lock", "work-key", "non-english"]),
+    ("B00TPKFANI", "us", "Grimm", "Kinder- und Hausmärchen",
+     ["region-lock", "work-key", "non-english"]),
 ]
 
 
@@ -211,7 +213,7 @@ def fetch(asin: str, region: str = DEFAULT_REGION) -> tuple[dict | None, str | N
             return json.loads(resp.read().decode()), None
     except urllib.error.HTTPError as exc:
         return None, f"HTTP {exc.code}"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return None, type(exc).__name__
 
 
@@ -238,7 +240,8 @@ def check_region_lock() -> tuple[list[dict], list[str]]:
                     continue
                 title = data.get("title") or ""
                 authors = ", ".join(a.get("name", "") for a in (data.get("authors") or []))
-                if want_author.lower() not in authors.lower() or want_title.lower() not in title.lower():
+                if (want_author.lower() not in authors.lower()
+                        or want_title.lower() not in title.lower()):
                     problems.append(
                         f"{asin} [{home}]: resolved to '{title}' by '{authors}', "
                         f"expected '{want_title}' by '{want_author}'"

@@ -1,0 +1,30 @@
+[project]
+name = "listenarr-testdata"
+version = "0.1.0"
+description = "Generator for synthetic audiobook test libraries that reproduce Listenarr scan, match and rename bugs"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = ["mutagen>=1.47"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["tools", "corpus", "tests"]
+
+[[tool.mypy.overrides]]
+module = "mutagen.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -5,6 +5,24 @@ Each entry is a paired run — the published `:canary` image (the bug) against a
 from the fix branch (the fix) — measured with `tools/verify_scan.py` against the manifest's
 recorded true ownership. Numbers are from a local run; regenerate with the commands shown.
 
+## Status at a glance
+
+| Fix (issue → PR) | What it does | Validation reached |
+|---|---|---|
+| #765 → #766 scan overmatch | stop a scan claiming a sibling's files | **runtime before/after** — bug on canary, gone on fix |
+| #764 → #763 series position | keep a non-numeric position (`1-4`) in naming | corpus data + the PR's own `FileNamingService` tests |
+| #767 → #768 series ASIN | populate `SeriesAsin` at conversion | corpus work-key/region-lock data + the PR's converter tests |
+
+Only #766 sits on a surface this harness drives directly (scan/link/BasePath). The other two
+are validated at the data and unit level, for the reasons each section spells out — the honest
+boundary, not a shortcut. Scan wall-clock/ffprobe counts for #765 are in commit `e506552` and
+the `tools/benchmark_scan.sh` header.
+
+**One correction that must not get lost:** an earlier draft (commit `6f72fbe`) called the scan
+cost superlinear and extrapolated the full library to hours. That was wrong — measured, it
+**plateaus at about a minute** (commit `e506552`). If a superlinear/hours figure was quoted
+anywhere, replace it with the plateau.
+
 Method for every entry: `tools/benchmark_scan.sh` generates a deterministic library, starts
 the image under a rootless container, adds books from the corpus, clears `BasePath`
 (`--no-basepath`, the state that makes the scan fall back to the library root), scans, and
@@ -138,3 +156,26 @@ benchmark itself: see the measured table in the header of `tools/benchmark_scan.
 `e506552`. Summary: one book against a 98,400-file library is ~1 minute; cost rises to ~24k
 files and then plateaus (sublinear), and the per-book scan path invokes ffprobe only for
 matched files (peak 1), not once per candidate.
+
+---
+
+## Next steps
+
+For whoever carries the upstream PRs forward:
+
+1. **#766 / #765** — the before/after above is the strongest evidence in this repo: it
+   reproduces the overmatch on the published image and shows it cleared on the fix. Cite it
+   (and re-run it — the commands are in the section) if it strengthens the PR.
+2. **#765 scan cost** — pull the plateau number (~1 minute at 98,400 files), NOT the retracted
+   superlinear/hours figure. See the correction banner above.
+3. **#763 / #764** — one **unconfirmed** lead worth a glance, stated as a question not a bug:
+   the file-extraction path (`ExtractFileMetadataAsync`) that manual-import uses does not
+   populate `SeriesPositionRaw`, so a manually-imported file carrying a non-numeric
+   series-position *tag* might still lose it. Whether extraction even reads that tag is
+   unchecked. If it is in scope for the fix, it deserves its own before/after; if not, ignore.
+4. **Runtime coverage** — a real before/after for #763/#768 would need a simulated download
+   client (#763) or a live Audnexus fetch (#768); both were judged out of proportion to the
+   assertion. Revisit only if that calculus changes.
+5. **Going public** — the repo is complete (generator, `verify_scan`, benchmark, tests, README,
+   LICENSE) and every commit is scrub-clean. Once it is public, the PRs can link it as a
+   reproducer a maintainer can run unchanged. That release is a human decision, not taken here.

@@ -74,10 +74,23 @@ against live Audnexus in this repo's corpus: `B0F84DFZ66` → "1-4", `B002V1PLZK
 track number ("7"). That is the fix's mechanism, and it is covered.
 
 **Not validated — runtime before/after:** NOT achieved, and here is the honest reason. The fix
-lives in the **download-import** path (`DownloadImportService` populates `SeriesPositionRaw`
-from the audiobook record, then `FileNamingService.Helpers` prefers it). Driving that path
-end-to-end needs a download client and a completed download — materially more setup than was
-in scope here.
+lives in the **download-import** path (`DownloadImportService.ImportDownloadFilesAsync`
+populates `SeriesPositionRaw` from the audiobook record, then `FileNamingService.Helpers`
+prefers it). Every route to that code was traced and none is drivable through the API without
+standing up download-client or indexer infrastructure:
+
+- manual-import (`/library/manual-import`) names from the FILE's extracted tags, not the
+  record — a different code path that never reaches the fix (see above);
+- `POST /download/reprocess/{id}` is a **placeholder** in this build (`DownloadService`
+  returns null), so it triggers nothing;
+- `POST /download/send` needs a configured download client AND a `DownloadReference` produced
+  by a prior indexer search (plus trusted-candidate gating);
+- the only genuine trigger is `DownloadMonitorService` enqueuing on a download client
+  reporting a completed download.
+
+So a real before/after here means simulating a download client — disproportionate to one
+naming assertion that the PR's own `SeriesPositionReproTests` already covers. Recorded rather
+than built.
 
 A first attempt drove the **manual-import** path instead (`POST /library/manual-import`) and
 found the position lost on BOTH canary and the fix image. That is NOT a gap in the fix: manual

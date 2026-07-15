@@ -58,6 +58,66 @@ podman build --network=host -t listenarr-vet:pr766 /tmp/vet-src
 
 ---
 
+## PR #763 / issue #764 — a non-numeric series position lost in naming
+
+**Claim under test:** a series position from Audnexus is a string that is not always a number
+("1-4" for an omnibus, "0" for a prequel, "1.5" for a novella). Squeezing it through
+`decimal.TryParse` lost it, and the loss reached the filename — it fell through to the track
+number. PR #763 threads the raw string (`SeriesPositionRaw`) through naming.
+
+**Validated — data level:** the exact positions the PR cites are real and machine-verified
+against live Audnexus in this repo's corpus: `B0F84DFZ66` → "1-4", `B002V1PLZK` → "1-2",
+`B00CQ5WAXW` → "0". See `corpus/corpus.json` and `tools/build_corpus.py --check`.
+
+**Validated — unit level (the PR's own tests):** `SeriesPositionReproTests` asserts that
+`FileNamingService`, given `SeriesPositionRaw = "1-4"`, writes "1-4" into the name and NOT the
+track number ("7"). That is the fix's mechanism, and it is covered.
+
+**Not validated — runtime before/after:** NOT achieved, and here is the honest reason. The fix
+lives in the **download-import** path (`DownloadImportService` populates `SeriesPositionRaw`
+from the audiobook record, then `FileNamingService.Helpers` prefers it). Driving that path
+end-to-end needs a download client and a completed download — materially more setup than was
+in scope here.
+
+A first attempt drove the **manual-import** path instead (`POST /library/manual-import`) and
+found the position lost on BOTH canary and the fix image. That is NOT a gap in the fix: manual
+import names the file from the FILE's embedded tags (`ExtractFileMetadataAsync`), not from the
+matched audiobook record, and the test file carried no series-position tag — so the position
+was empty for a reason unrelated to #763. The attempt was retired rather than reported as a
+finding. (Lesson: manual-import naming ≠ download-import naming; only the latter is #763's
+surface.)
+
+**One unconfirmed lead, for the PR author, not asserted as a bug:** the file-extraction path
+(`MetadataService.ExtractFileMetadataAsync`) that manual-import relies on does not populate
+`SeriesPositionRaw` — the fix did not touch it. So a file carrying a non-numeric
+series-position *tag* imported manually might still lose it. Whether extraction even reads
+that tag is unchecked; worth a glance, not a claim.
+
+---
+
+## PR #768 / issue #767 — series ASIN dropped at metadata conversion
+
+**Claim under test:** `ConvertAudnexusToMetadata` mapped the series name and position but
+dropped `AudnexusSeries.Asin`, so `AudiobookSeriesMembership.SeriesAsin` was never populated —
+even though `(SeriesAsin, position)` is the only stable work key (a book ASIN is
+per-marketplace and per-narrator; a series name is free text). PR #768 maps the ASIN through.
+
+**Validated — data level:** this repo's whole reason for existing is that this work key is
+real and reproducible. The corpus proves it two ways, both re-verifiable against live Audnexus:
+four public-domain works each carry two distinct book ASINs under one `series_asin` + position
+(the Barsoom / Verne / Oz / Musketeers pairs), and the Grimm region-lock proof shows one work
+under two ASINs, each invisible from the other's marketplace. See `corpus/corpus.json`
+(`region_lock_proof`) and `tools/build_corpus.py --check`.
+
+**Validated — unit level (the PR's own tests):** `MetadataConvertersSeriesAsinTests` asserts
+the converter now copies the primary and secondary series ASINs.
+
+**Not validated — runtime before/after:** the converter only runs on a live Audnexus fetch, so
+a runtime before/after would depend on the container reaching `api.audnex.us` and a fetch
+trigger. Left at the data + unit level above rather than built on an external live dependency.
+
+---
+
 ## Scan cost (all images) — recorded separately
 
 The library-scan wall-clock and ffprobe counts referenced for issue #765 are committed with the

@@ -13,7 +13,28 @@
 # So the honest measurement is the cost of scanning ONE book as a function of how big the
 # library is. Time that at several library sizes and the shape shows itself: if per-book scan
 # time grows with the size of the library rather than with the size of the book, the fan-out
-# is real, and the total cost of scanning a library is that number times the book count.
+# is expensive; if it flattens, the re-walk is real but cheap.
+#
+# MEASURED against ghcr.io/listenarrs/listenarr:canary, one book, BasePath cleared
+# (--books 1 --no-basepath), ffprobe sampled inside the container:
+#
+#     library files    per-book scan    peak ffprobe
+#          4,000            28.8s             1
+#         24,000            57.2s             1
+#         48,000            57.2s             1
+#         98,400            61.3s             1
+#
+# The cost RISES from 4k to ~24k and then PLATEAUS: 24x the files buys ~2x the time. The
+# re-walk is real (BasePath empty => scan root is the whole library) but it is I/O-bound
+# directory enumeration that saturates, not a blow-up — scanning one book against a 98k-file
+# library is ~1 minute, not the hours a naive O(books x files) reading would predict. The
+# per-book path DOES invoke ffprobe, but only for files that match the book (peak 1 here),
+# not once per candidate.
+#
+# An earlier draft of this file reported a superlinear curve and extrapolated to hours; that
+# was an artifact of comparing runs taken under different --books counts and a host-side
+# ffprobe sampler that could not see into the container. The table above is a clean sweep
+# under identical conditions and supersedes it.
 #
 # Nothing here builds Listenarr. It runs the PUBLISHED image, so a maintainer gets the same
 # number from the same artifact, and no local checkout is touched.
@@ -113,7 +134,7 @@ log INFO "library: ${FILES} files, ${SIZE}"
 "$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1 || true
 "$RUNTIME" run -d --name "$CONTAINER" \
     -p "${PORT}:4545" \
-    -e LISTENARR_LOG_LEVEL=Information \
+    -e LISTENARR_LOG_LEVEL=Debug \
     -v "${LIBRARY}:/audiobooks:ro" \
     -v "${CONFIG}:/app/config" \
     "$IMAGE" >/dev/null || die "could not start the container"
@@ -248,17 +269,29 @@ print(d.get('jobId') or d.get('id') or '')" 2>/dev/null || echo "")
 
     if [[ -n "$JOB" ]]; then
         STATUS="Pending"
+        LAST_BEAT=0
         while [[ "$STATUS" != "Completed" && "$STATUS" != "Failed" && "$STATUS" != "?" ]]; do
-            sleep 1
+            sleep 2
             STATUS=$(curl -fsS "${API}/library/scan/${JOB}" "${AUTH[@]}" \
                 | "$PYTHON" -c "
 import json,sys
 d = json.load(sys.stdin)
 print(d.get('status') or d.get('state') or '?')" 2>/dev/null || echo "?")
+            # A timestamped heartbeat every ~30s: a background log accumulates readable
+            # progress instead of a single carriage-returned line nobody can tail.
+            NOW=$(date +%s.%N)
+            ELAPSED_INT=$(printf '%.0f' "$(echo "$NOW - $START" | bc)")
+            if (( ELAPSED_INT - LAST_BEAT >= 30 )); then
+                PEAK_NOW=$(cat "$PEAK_FILE")
+                log SCAN "book ${id} (${TITLE}): status=${STATUS} elapsed=${ELAPSED_INT}s peak_ffprobe=${PEAK_NOW}"
+                LAST_BEAT=$ELAPSED_INT
+            fi
         done
     fi
     END=$(date +%s.%N)
-    printf '  %-8s %-34s %10.1f\n' "$id" "$TITLE" "$(echo "$END - $START" | bc)"
+    SECS=$(echo "$END - $START" | bc)
+    log SCAN "book ${id} (${TITLE}): ${STATUS} in ${SECS}s"
+    printf '  %-8s %-34s %10.1f\n' "$id" "$TITLE" "$SECS"
 done
 RUN_END=$(date +%s.%N)
 

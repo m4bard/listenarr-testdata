@@ -59,6 +59,44 @@ TOTAL                                                     0   123
 
 The claim being tested is that this is not a *partial* failure: a correctly-tagged library in a common third-party layout is not partly discovered, it is not discovered at all. Run it against your own build and find out — that is what the repository is for.
 
+## Library layouts — generate one that matches your tool
+
+`--layout <name>` produces a library in a single on-disk convention, so you can mirror whatever
+tool you actually run instead of describing a layout by hand. `--list-layouts` prints the full
+menu; the provenance for each convention is a permalink in the `source` field of `corpus/cases.py`,
+not just this table.
+
+Example paths use one book — *A Princess of Mars* (Edgar Rice Burroughs, Barsoom #1):
+
+| Your tool | `--layout` | Example path | Source |
+|---|---|---|---|
+| **Listenarr** (default) | `listenarr` | `Edgar Rice Burroughs/Barsoom/A Princess of Mars/A Princess of Mars.m4b` | [code](https://github.com/Listenarrs/Listenarr/blob/4555ad21e3c455ae3963836e55693207cea66d12/listenarr.domain/Configuration/ApplicationSettings.cs#L33) |
+| **AudioBookShelf** (series) | `audiobookshelf-series` | same as Listenarr | [docs](https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/) |
+| **AudioBookShelf** (flat) | `audiobookshelf-flat` | `Edgar Rice Burroughs/A Princess of Mars/A Princess of Mars.m4b` | [docs](https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/) |
+| **Readarr** (retired) | `readarr` | `Edgar Rice Burroughs/A Princess of Mars/…` (folder shape) | [code](https://github.com/Readarr/Readarr/blob/develop/src/NzbDrone.Core/Organizer/NamingConfig.cs) |
+| **Plex** (community) | `plex-community` | `Edgar Rice Burroughs/Edgar Rice Burroughs - Barsoom - A Princess of Mars/…` | [guide](https://github.com/seanap/Plex-Audiobook-Guide) |
+| **AudioBookShelf** (chaptered) | `audiobookshelf` | `Edgar Rice Burroughs/Barsoom/1 - A Princess of Mars/…` | [docs](https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/) |
+
+```bash
+# a library in Listenarr's own layout, from nothing:
+python3 tools/generate_library.py --layout listenarr --out ./build/lib
+```
+
+Honest caveats: **AudioBookShelf** documents *several* shapes (series and flat), so it has no
+single default — pick the one you use. **Plex** has no native audiobook type; the layout is a
+community convention, and different guides disagree. **Readarr** doesn't rename by default, and
+the harness models its *folder* shape, not its per-file naming. **Audnexus** is a metadata API
+with no layout at all — the `plex-community` shape is often paired with it but not defined by it.
+
+### Trickiest common format
+
+`--layout audiobookshelf` combined with per-chapter files (`001 - Chapter 1.mp3`) is the one that
+breaks tools in practice: the filename carries neither title nor author, so path heuristics find
+nothing; folder + author-in-path triggers over-attribution (a scan of one book claims the author's
+siblings); and only embedded tags can identify it — which disagree with the folder roughly one
+book in six. It's the shape that forces a scanner to combine signals and cross-check them rather
+than trust any single one. If you exercise one adversarial layout, exercise this.
+
 ## Test a specific Listenarr branch or PR
 
 The harness drives a Listenarr container, so it can validate any branch — including one that

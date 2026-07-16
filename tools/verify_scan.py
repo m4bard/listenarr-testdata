@@ -242,6 +242,25 @@ def normalize(path: str, root_map: tuple[str, str] | None) -> str:
     return str(pathlib.Path(path))
 
 
+def work_index(manifest: dict[str, Any]) -> dict[str, tuple[str, str]]:
+    """Map each book ASIN to its work key (series_asin, position), from the manifest itself.
+
+    The repo's headline finding is that a book ASIN is a *manifestation* id: the same work can
+    carry several ASINs sharing one (series_asin, position). So a scanner that links a file to a
+    DIFFERENT valid ASIN of the same work has not made an error — insisting on one exact ASIN
+    would score the repo's own thesis as a failure. Only entries whose series_asin is populated
+    can participate; without it there is no work key to be equivalent under.
+    """
+    index: dict[str, tuple[str, str]] = {}
+    for entry in manifest["entries"]:
+        asin = entry.get("belongs_to_asin")
+        series_asin = entry.get("true_series_asin")
+        position = entry.get("true_series_position")
+        if asin and series_asin and position is not None:
+            index[asin] = (series_asin, str(position))
+    return index
+
+
 def compare(
     manifest: dict[str, Any],
     observations: list[Observation],
@@ -252,6 +271,8 @@ def compare(
     by_path: dict[str, Observation] = {}
     for observation in observations:
         by_path[normalize(observation.path, root_map)] = observation
+
+    works = work_index(manifest)
 
     report = Report()
     for entry in manifest["entries"]:
@@ -287,10 +308,29 @@ def compare(
         # which is the common case for a library that was never Audible-tagged.
         if observed.asin:
             ok = observed.asin == expected
-            why = "" if ok else (
-                f"linked to {observed.asin} ({observed.title!r}), expected {expected} "
-                f"({entry['true_title']!r})"
-            )
+            why = ""
+            if not ok:
+                # Not the exact ASIN — but a link to another manifestation of the SAME work is
+                # still correct. Equivalent iff both ASINs resolve to the same (series_asin,
+                # position). Compared straight off the manifest, so a twin that is not itself in
+                # this library cannot be spoofed in.
+                expected_work = (
+                    (entry["true_series_asin"], str(entry["true_series_position"]))
+                    if entry.get("true_series_asin") and entry.get("true_series_position") is not None
+                    else None
+                )
+                observed_work = works.get(observed.asin)
+                if expected_work is not None and observed_work == expected_work:
+                    ok = True
+                    why = (
+                        f"linked to {observed.asin}, a work-equivalent manifestation of "
+                        f"{expected} (series {expected_work[0]} #{expected_work[1]})"
+                    )
+                else:
+                    why = (
+                        f"linked to {observed.asin} ({observed.title!r}), expected {expected} "
+                        f"({entry['true_title']!r})"
+                    )
         else:
             ok = (observed.title or "").strip().lower() == entry["true_title"].strip().lower()
             why = "" if ok else (

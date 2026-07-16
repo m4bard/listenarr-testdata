@@ -225,6 +225,81 @@ class TestCompare:
         assert not any(r.entry.get("clutter_kind") == "sidecars" for r in report.results)
 
 
+class TestWorkEquivalence:
+    """Contract: a link to another valid ASIN of the same work is a PASS, not a FAIL.
+
+    The repo's headline thesis is that a book ASIN is a manifestation id and (series_asin,
+    position) is the stable work key. An answer key that demands one exact ASIN would score that
+    very thesis as a scanner failure. These pin the equivalence — and its edges, so it does not
+    turn into 'any ASIN passes'.
+    """
+
+    @pytest.fixture
+    def twins(self, tmp_path: pathlib.Path) -> tuple[pathlib.Path, dict, dict, dict]:
+        out = tmp_path / "lib"
+        manifest = generate(cases.SCENARIOS_BY_KEY["series-work-key"], out, seed=1)
+        # Two book entries that share a work key but carry different ASINs — the whole point of
+        # the scenario. If the corpus ever loses its twin pairs this fixture fails loudly.
+        by_work: dict[tuple, list[dict]] = {}
+        for e in manifest["entries"]:
+            if e["kind"] != "book" or not e.get("true_series_asin"):
+                continue
+            by_work.setdefault(
+                (e["true_series_asin"], str(e["true_series_position"])), []
+            ).append(e)
+        pair = next(
+            entries for entries in by_work.values()
+            if len({e["belongs_to_asin"] for e in entries}) > 1
+        )
+        a = pair[0]
+        b = next(e for e in pair if e["belongs_to_asin"] != a["belongs_to_asin"])
+        return out, manifest, a, b
+
+    def test_linking_to_the_twin_asin_passes(
+        self, twins: tuple[pathlib.Path, dict, dict, dict]
+    ) -> None:
+        out, manifest, a, b = twins
+        # The scanner linked file A to B's ASIN — a different manifestation of the same work.
+        observations = [
+            Observation(path=str(out / a["path"]), asin=b["belongs_to_asin"], title=b["true_title"])
+        ]
+        report = compare(manifest, observations, out, None)
+        result = next(r for r in report.results if r.entry["path"] == a["path"])
+        assert result.verdict == "pass"
+        assert "work-equivalent" in result.why
+
+    def test_a_different_position_in_the_same_series_still_fails(
+        self, twins: tuple[pathlib.Path, dict, dict, dict]
+    ) -> None:
+        # The edge that keeps equivalence honest: same series ASIN, WRONG position is a real
+        # mis-link (book 1 vs book 2 of a series), and must not be waved through.
+        out, manifest, a, _ = twins
+        intruder = next(
+            e for e in manifest["entries"]
+            if e["kind"] == "book"
+            and e.get("true_series_asin") == a["true_series_asin"]
+            and str(e.get("true_series_position")) != str(a["true_series_position"])
+        )
+        observations = [
+            Observation(path=str(out / a["path"]), asin=intruder["belongs_to_asin"],
+                        title=intruder["true_title"])
+        ]
+        report = compare(manifest, observations, out, None)
+        result = next(r for r in report.results if r.entry["path"] == a["path"])
+        assert result.verdict == "fail"
+
+    def test_an_unrelated_asin_still_fails(
+        self, twins: tuple[pathlib.Path, dict, dict, dict]
+    ) -> None:
+        out, manifest, a, _ = twins
+        observations = [
+            Observation(path=str(out / a["path"]), asin="B0UNRELATED", title="Something Else")
+        ]
+        report = compare(manifest, observations, out, None)
+        result = next(r for r in report.results if r.entry["path"] == a["path"])
+        assert result.verdict == "fail"
+
+
 class TestBasePath:
     def test_a_basepath_shared_by_two_books_is_reported(
         self, library: tuple[pathlib.Path, dict]

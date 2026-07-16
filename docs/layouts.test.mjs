@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import {
   EXAMPLE,
   PRESETS,
+  TOKENS,
   normalizePattern,
+  renderPattern,
   renderPath,
   matchPreset,
   commandFor,
@@ -65,8 +67,26 @@ test("every preset renders a non-empty example path and has a source URL", () =>
   }
 });
 
-test("EXAMPLE is fully populated so every token renders", () => {
-  for (const key of ["author", "series", "seriesNumber", "title", "year"]) {
-    assert.ok(EXAMPLE[key], key);
+test("every offered token has an example value, so the preview never shows a raw {Token}", () => {
+  for (const { token } of TOKENS) {
+    const name = token.slice(1, -1); // {Author} -> Author
+    assert.ok(EXAMPLE[name], `no example value for ${name}`);
   }
+});
+
+test("renderPattern fills the full Listenarr token set with no leftovers", () => {
+  const rendered = renderPattern(
+    "{Author}|{Series}|{SeriesNumber}|{Title}|{Subtitle}|{Year}|{Narrator}|" +
+    "{Publisher}|{Edition}|{Language}|{Asin}|{Quality}|{DiskNumber}|{ChapterNumber}",
+  );
+  assert.ok(!rendered.includes("{"), rendered);
+});
+
+test("renderPattern honours a zero-pad format specifier", () => {
+  assert.equal(renderPattern("{ChapterNumber:00}"), "01");
+  assert.equal(renderPattern("{DiskNumber:000}"), "001");
+});
+
+test("renderPattern leaves an unknown token verbatim rather than dropping it", () => {
+  assert.equal(renderPattern("{Nonsense}/{Title}"), "{Nonsense}/A Princess of Mars");
 });

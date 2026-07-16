@@ -25,6 +25,11 @@
   .match.custom { color: var(--muted); font-weight: 400; }
   a { color: var(--accent); }
   .foot { color: var(--muted); font-size: 13px; margin-top: 2rem; }
+  .cap { color: var(--muted); font-size: 13px; margin: .4rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; margin: .6rem 0 0; }
+  dt { font-family: monospace; }
+  dd { margin: 0; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -42,6 +47,8 @@
   <div class="card">
     <label for="pattern">Folder pattern</label>
     <input id="pattern" type="text" value="{Author}/{Series}/{Title}" spellcheck="false">
+    <p class="cap">Insert a token — the full Listenarr set (<a id="tok-src" href="#">source</a>).
+      Hover for what each is; <code>{DiskNumber:00}</code> zero-pads.</p>
     <div class="btns" id="tokens"></div>
   </div>
 
@@ -55,23 +62,47 @@
     <pre id="command"></pre>
   </div>
 
+  <details class="card">
+    <summary>Token reference — what each one means</summary>
+    <p class="cap">Listenarr has no standalone naming docs; these are its actual naming tokens,
+      from <a id="ref-src" href="#">FileNamingService</a> in the source. Other tools use different
+      token names — the layout menu in the
+      <a href="https://github.com/m4bard/listenarr-testdata#readme">README</a> links each one's source.</p>
+    <dl id="tokenref"></dl>
+  </details>
+
   <p class="foot">Example book: <em>A Princess of Mars</em> (Edgar Rice Burroughs, Barsoom #1).
     Provenance for each convention is a <code>source</code> permalink in
     <a href="https://github.com/m4bard/listenarr-testdata/blob/main/corpus/cases.py">corpus/cases.py</a>.</p>
 </main>
 
 <script type="module">
-import { PRESETS, TOKENS, renderPath, matchPreset, commandFor } from "./layouts.js";
+import { PRESETS, TOKENS, TOKENS_SOURCE, renderPath, matchPreset, commandFor } from "./layouts.js";
 
 const $ = (id) => document.getElementById(id);
 const pattern = $("pattern");
 
-// token-insert buttons
-for (const tok of [...TOKENS, "/"]) {
+// source links
+$("tok-src").href = TOKENS_SOURCE;
+$("ref-src").href = TOKENS_SOURCE;
+
+// token-insert buttons (with hover descriptions), then a path-separator button
+for (const { token, desc } of TOKENS) {
   const b = document.createElement("button");
-  b.className = "token"; b.textContent = tok;
-  b.onclick = () => { insertAtCursor(pattern, tok); update(); };
+  b.className = "token"; b.textContent = token; b.title = desc;
+  b.onclick = () => { insertAtCursor(pattern, token); update(); };
   $("tokens").appendChild(b);
+}
+const slash = document.createElement("button");
+slash.className = "token"; slash.textContent = "/"; slash.title = "path separator";
+slash.onclick = () => { insertAtCursor(pattern, "/"); update(); };
+$("tokens").appendChild(slash);
+
+// visible token reference
+for (const { token, desc } of TOKENS) {
+  const dt = document.createElement("dt"); dt.textContent = token;
+  const dd = document.createElement("dd"); dd.textContent = desc;
+  $("tokenref").append(dt, dd);
 }
 
 // preset quick-pick buttons

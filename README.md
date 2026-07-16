@@ -6,6 +6,8 @@ It is a generator, not a library. The repository holds a manifest of real books 
 
 The point is that a bug report should not rest on "trust me, my library does this". Clone it, generate the library, point Listenarr at it, and watch the bug happen on your own machine.
 
+> **New:** build a folder shape and get the matching command with the [layout picker](https://m4bard.github.io/listenarr-testdata/).
+
 ## Requirements
 
 Linux or macOS (or Windows via WSL2). Validated on **Ubuntu 25.10**. It needs a container

@@ -772,6 +772,26 @@ def load_corpus() -> list[dict[str, Any]]:
     return sorted(books, key=lambda b: b["asin"])  # a stable order, independent of file order
 
 
+def select_books(
+    corpus: list[dict[str, Any]],
+    only_asins: list[str] | None = None,
+    only_tags: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Narrow the corpus to specific ASINs and/or books carrying any of the given tags.
+
+    Both filters are ANDed when both are given. Order is preserved (the corpus's stable
+    ASIN order), so selection stays deterministic.
+    """
+    result = corpus
+    if only_asins:
+        wanted = {a.strip().upper() for a in only_asins}
+        result = [b for b in result if b["asin"].upper() in wanted]
+    if only_tags:
+        wanted_tags = {t.strip() for t in only_tags}
+        result = [b for b in result if wanted_tags & set(b.get("tags", []))]
+    return result
+
+
 def pattern_values(meta: Meta) -> dict[str, str]:
     return {
         "author": ", ".join(meta.authors) if meta.authors else "",
@@ -856,17 +876,26 @@ def generate(
     seed: int,
     limit: int | None = None,
     layout_override: str | None = None,
+    only_asins: list[str] | None = None,
+    only_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Generate the library for one scenario and return its manifest.
 
     layout_override, when given, forces every book into that one on-disk layout,
     ignoring the scenario's own layout mix. This is what --layout uses to produce
     a library in a single tool's convention.
+
+    only_asins / only_tags narrow the corpus to specific books (by ASIN) or to books
+    carrying any of the given failure-mode tags, so a reported bug becomes a minimal
+    two- or three-book repro rather than a whole scenario.
     """
     rng = random.Random(seed)
     corpus = load_corpus()
+    corpus = select_books(corpus, only_asins=only_asins, only_tags=only_tags)
     if limit:
         corpus = corpus[:limit]
+    if not corpus:
+        raise ValueError("no corpus books match the given --only-asin / --tag filters")
 
     out.mkdir(parents=True, exist_ok=True)
     silence = SilenceFactory(out / ".silence-cache")
@@ -1049,6 +1078,11 @@ def main() -> int:
     ap.add_argument("--layout", help="force a single on-disk layout (see --list-layouts); "
                                      "overrides the scenario's layout mix. Defaults the "
                                      "scenario to 'existing-library-adoption' if none is given.")
+    ap.add_argument("--only-asin", action="append", metavar="ASIN",
+                    help="restrict to these ASIN(s); repeatable or comma-separated")
+    ap.add_argument("--tag", action="append", metavar="TAG",
+                    help="restrict to books carrying any of these failure-mode tag(s); "
+                         "repeatable or comma-separated")
     ap.add_argument("--list", action="store_true", help="list the scenarios and exit")
     ap.add_argument("--list-layouts", action="store_true", help="list the layouts and exit")
     ap.add_argument("--force", action="store_true", help="overwrite a non-empty --out")
@@ -1073,7 +1107,16 @@ def main() -> int:
                  f"Aliases: {', '.join(cases.LAYOUT_ALIASES)}")
 
     # --layout alone gets a clean, correctly-tagged library (the adoption scenario).
-    scenario_key = args.scenario or ("existing-library-adoption" if args.layout else None)
+    def split_repeatable(values: list[str] | None) -> list[str] | None:
+        items = [x.strip() for v in (values or []) for x in v.split(",") if x.strip()]
+        return items or None
+
+    only_asins = split_repeatable(args.only_asin)
+    only_tags = split_repeatable(args.tag)
+
+    # --layout / --only-asin / --tag alone still need a scenario; default to the clean adoption one.
+    narrowed = bool(args.layout or only_asins or only_tags)
+    scenario_key = args.scenario or ("existing-library-adoption" if narrowed else None)
     if not scenario_key or not args.out:
         ap.error("--scenario and --out are required (or --layout, --list, --list-layouts)")
 
@@ -1087,7 +1130,8 @@ def main() -> int:
             ap.error(f"{args.out} exists and is not empty; pass --force to overwrite")
         shutil.rmtree(args.out)
 
-    manifest = generate(scenario, args.out, args.seed, args.limit, layout_key)
+    manifest = generate(scenario, args.out, args.seed, args.limit, layout_key,
+                        only_asins=only_asins, only_tags=only_tags)
     print(f"scenario   {manifest['scenario']}")
     print(f"seed       {manifest['seed']}")
     print(f"books      {manifest['corpus_books']}")

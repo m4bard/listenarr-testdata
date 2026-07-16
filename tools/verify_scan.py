@@ -45,6 +45,26 @@ AUDIO_CLUTTER = {
     "os-detritus",
 }
 
+# The upstream shape these observation sources target. A conformance tool that silently reads
+# zero rows because the schema moved underneath it is worse than useless — it cries wolf, and a
+# false "0% linked" is indistinguishable from a real scan regression. So the sources PROBE for
+# this shape first and raise loudly if it is gone, naming what they actually found. Bump the pin
+# when the query is re-verified against a newer checkout.
+SCHEMA_PIN = "listenarr canary @ 6e70e07e"
+EXPECTED_TABLES = {
+    "Audiobooks": {"Id", "Title", "Asin", "BasePath"},
+    "AudiobookFiles": {"AudiobookId", "Path"},
+}
+API_LIBRARY_PATH = "/api/v1/library"
+
+
+class SourceError(RuntimeError):
+    """An observation source could not be trusted — the schema/endpoint it targets is gone.
+
+    Raised (not silently swallowed into an empty list) so that "the source rotted" is loud and
+    distinct from "the scan legitimately linked nothing". main() turns it into a non-zero exit.
+    """
+
 
 @dataclass
 class Observation:
@@ -82,6 +102,34 @@ class Report:
 # Sources of observation
 # --------------------------------------------------------------------------
 
+def probe_sqlite_schema(connection: sqlite3.Connection) -> None:
+    """Fail loudly if the database is not the shape the query below expects.
+
+    Without this, a renamed table or dropped column reads as zero linked files — a false
+    conformance failure. This turns "the schema moved" into an explicit error that names what
+    it found, instead of a silent empty result that looks exactly like a broken scan.
+    """
+    present = {
+        row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    for table, columns in EXPECTED_TABLES.items():
+        if table not in present:
+            raise SourceError(
+                f"table {table!r} not found (schema pin: {SCHEMA_PIN}). "
+                f"Tables present: {', '.join(sorted(present)) or '(none)'}. "
+                "The upstream schema moved — update EXPECTED_TABLES and the query in from_sqlite."
+            )
+        have = {row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+        missing = columns - have
+        if missing:
+            raise SourceError(
+                f"table {table!r} is missing column(s) {', '.join(sorted(missing))} "
+                f"(schema pin: {SCHEMA_PIN}). Columns present: {', '.join(sorted(have))}."
+            )
+
+
 def from_sqlite(db: pathlib.Path) -> list[Observation]:
     """Read what the scan concluded, straight out of the SQLite database.
 
@@ -93,6 +141,7 @@ def from_sqlite(db: pathlib.Path) -> list[Observation]:
     connection = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
+        probe_sqlite_schema(connection)
         rows = connection.execute(
             """
             SELECT f.Path      AS path,
@@ -105,11 +154,10 @@ def from_sqlite(db: pathlib.Path) -> list[Observation]:
             """
         ).fetchall()
     except sqlite3.OperationalError as exc:
-        sys.exit(
-            f"FATAL: cannot read {db}: {exc}\n"
-            "Expected tables Audiobooks and AudiobookFiles. If the schema has moved, this "
-            "query is the only thing that needs to change."
-        )
+        raise SourceError(
+            f"cannot read {db}: {exc} (schema pin: {SCHEMA_PIN}). "
+            "Expected tables Audiobooks and AudiobookFiles."
+        ) from exc
     finally:
         connection.close()
 
@@ -136,20 +184,30 @@ def from_api(base_url: str, api_key: str | None) -> list[Observation]:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return json.loads(response.read().decode())
         except urllib.error.HTTPError as exc:
-            sys.exit(f"FATAL: GET {path} -> HTTP {exc.code}")
+            raise SourceError(
+                f"GET {path} -> HTTP {exc.code} (schema pin: {SCHEMA_PIN}). "
+                "The endpoint this source targets may have moved or been removed."
+            ) from exc
         except OSError as exc:
-            sys.exit(f"FATAL: GET {path} -> {exc}")
+            raise SourceError(f"GET {path} -> {exc}") from exc
 
     observations: list[Observation] = []
-    books = get("/api/v1/library")
+    books = get(API_LIBRARY_PATH)
     if isinstance(books, dict):
         books = books.get("items") or books.get("records") or []
+    if not isinstance(books, list):
+        raise SourceError(
+            f"GET {API_LIBRARY_PATH} did not return a list of books (got {type(books).__name__}; "
+            f"schema pin: {SCHEMA_PIN}). The library endpoint shape changed."
+        )
 
     for entry in books:
         book_id = entry.get("id")
         files = entry.get("files")
         if files is None and book_id is not None:
-            files = get(f"/api/v1/library/{book_id}/files-debug") or []
+            # /files-debug is a debug endpoint and can vanish without notice; if it 404s, get()
+            # raises SourceError rather than letting a book quietly contribute zero files.
+            files = get(f"{API_LIBRARY_PATH}/{book_id}/files-debug") or []
         for audio in files or []:
             path = audio.get("path") if isinstance(audio, dict) else audio
             if not path:
@@ -405,14 +463,21 @@ def main() -> int:
         remote, local = args.root_map.split("=", 1)
         root_map = (remote, local)
 
-    if args.db:
-        observations = from_sqlite(args.db)
-    elif args.api:
-        observations = from_api(args.api, args.api_key)
-    elif args.observed:
-        observations = from_observed(args.observed)
-    else:
-        ap.error("one of --db, --api or --observed is required")
+    try:
+        if args.db:
+            observations = from_sqlite(args.db)
+        elif args.api:
+            observations = from_api(args.api, args.api_key)
+        elif args.observed:
+            observations = from_observed(args.observed)
+        else:
+            ap.error("one of --db, --api or --observed is required")
+    except SourceError as exc:
+        # A rotted source is not a conformance failure — it is an inconclusive run, and it must
+        # not read as a green scan. Exit 2 (distinct from 1 = real conformance fail) so a caller
+        # can tell "the harness could not look" from "the scan got it wrong".
+        print(f"SOURCE ERROR: {exc}", file=sys.stderr)
+        return 2
 
     print(f"scenario   {manifest['scenario']}")
     print(f"expect     {manifest['expect']}")

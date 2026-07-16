@@ -22,6 +22,7 @@ import cases
 from generate_library import generate
 from verify_scan import (
     Observation,
+    SourceError,
     audit,
     check_base_paths,
     compare,
@@ -81,6 +82,51 @@ class TestSqliteSource:
         # A file the scan dropped has no row at all. Absence IS the observation, and for the
         # existing-library-adoption scenario it is the entire finding.
         db = tmp_path / "listenarr.db"
+        make_db(db, [])
+        assert from_sqlite(db) == []
+
+
+class TestSourceRotIsLoud:
+    """Contract: a rotted source RAISES; it must never read as an honest empty result.
+
+    A false '0% linked' from a moved schema is indistinguishable from a real scan regression —
+    the worst failure mode for a conformance tool. These pin that a source which can no longer be
+    trusted fails loudly (SourceError) rather than silently returning [].
+    """
+
+    def test_a_renamed_table_raises_not_empty(self, tmp_path: pathlib.Path) -> None:
+        db = tmp_path / "moved.db"
+        connection = sqlite3.connect(db)
+        # The schema moved: Audiobooks -> Books. The old, silent behaviour returned [].
+        connection.executescript(
+            "CREATE TABLE Books (Id INTEGER PRIMARY KEY, Title TEXT, Asin TEXT, BasePath TEXT);"
+            "CREATE TABLE AudiobookFiles (Id INTEGER PRIMARY KEY, AudiobookId INTEGER, Path TEXT);"
+        )
+        connection.close()
+        with pytest.raises(SourceError) as exc:
+            from_sqlite(db)
+        assert "Audiobooks" in str(exc.value)  # names what it expected and could not find
+
+    def test_a_dropped_column_raises_not_empty(self, tmp_path: pathlib.Path) -> None:
+        db = tmp_path / "narrowed.db"
+        connection = sqlite3.connect(db)
+        # Asin column dropped: the query would still parse to zero rows on an empty table, so a
+        # column-level probe is what catches this one.
+        connection.executescript(
+            "CREATE TABLE Audiobooks (Id INTEGER PRIMARY KEY, Title TEXT, BasePath TEXT);"
+            "CREATE TABLE AudiobookFiles (Id INTEGER PRIMARY KEY, AudiobookId INTEGER, Path TEXT);"
+        )
+        connection.close()
+        with pytest.raises(SourceError) as exc:
+            from_sqlite(db)
+        assert "Asin" in str(exc.value)
+
+    def test_a_correct_schema_with_zero_rows_is_still_a_clean_empty(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # The line the probe must NOT cross: a valid, empty database is a legitimate observation
+        # (nothing linked), not a source error. Only a MOVED schema is an error.
+        db = tmp_path / "empty.db"
         make_db(db, [])
         assert from_sqlite(db) == []
 

@@ -135,7 +135,7 @@ log INFO "library: ${FILES} files, ${SIZE}"
 "$RUNTIME" run -d --name "$CONTAINER" \
     -p "${PORT}:4545" \
     -e LISTENARR_LOG_LEVEL=Debug \
-    -v "${LIBRARY}:/audiobooks:ro" \
+    -v "${LIBRARY}:/audiobooks" \
     -v "${CONFIG}:/app/config" \
     "$IMAGE" >/dev/null || die "could not start the container"
 
@@ -318,7 +318,9 @@ cat <<EOF
 Conformance:
 EOF
 
+# verify_scan.py prepends the /api/v1 path segment itself, so it takes the un-prefixed host
+# base (passing ${API} here would double the prefix). See listenarr-testdata#1.
 "$PYTHON" "${ROOT}/tools/verify_scan.py" \
     --manifest "${LIBRARY}/manifest.json" \
     --api "http://localhost:${PORT}" --api-key "${API_KEY}" \
-    --root-map "/audiobooks=${LIBRARY}" 2>/dev/null || true
+    --root-map "/audiobooks=${LIBRARY}"

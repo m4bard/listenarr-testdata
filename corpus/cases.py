@@ -38,8 +38,10 @@ LAYOUTS: list[Layout] = [
         key="listenarr-native",
         folder="{author}/{year} - {title}",
         filename="{title}",
-        note="The layout PathMetadataParser actually requires: '{Year} - {Title}'. "
-             "The only one that currently parses.",
+        note="The INPUT format PathMetadataParser requires ('{Year} - {Title}'), and the "
+             "only one it currently parses. NOTE: this is not Listenarr's default OUTPUT "
+             "layout — that is `author-series-title` ({Author}/{Series}/{Title}). Named for "
+             "the parser, not the organizer.",
     ),
     Layout(
         key="listenarr-native-series",
@@ -58,7 +60,9 @@ LAYOUTS: list[Layout] = [
         key="author-series-title",
         folder="{author}/{series}/{title}",
         filename="{title}",
-        note="Plain author/series/title. No year anywhere.",
+        note="{Author}/{Series}/{Title} — Listenarr's DEFAULT output layout "
+             "(FolderNamingPattern), and the shape AudioBookShelf documents. No year "
+             "anywhere, so the native parser rejects it.",
     ),
     Layout(
         key="audiobookshelf",

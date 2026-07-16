@@ -855,8 +855,14 @@ def generate(
     out: pathlib.Path,
     seed: int,
     limit: int | None = None,
+    layout_override: str | None = None,
 ) -> dict[str, Any]:
-    """Generate the library for one scenario and return its manifest."""
+    """Generate the library for one scenario and return its manifest.
+
+    layout_override, when given, forces every book into that one on-disk layout,
+    ignoring the scenario's own layout mix. This is what --layout uses to produce
+    a library in a single tool's convention.
+    """
     rng = random.Random(seed)
     corpus = load_corpus()
     if limit:
@@ -865,7 +871,8 @@ def generate(
     out.mkdir(parents=True, exist_ok=True)
     silence = SilenceFactory(out / ".silence-cache")
 
-    layouts = [cases.LAYOUTS_BY_KEY[k] for k in scenario.layouts]
+    layout_keys = [layout_override] if layout_override else list(scenario.layouts)
+    layouts = [cases.LAYOUTS_BY_KEY[k] for k in layout_keys]
     tag_states = list(scenario.tag_states)
     weights: dict[str, float] = scenario.extras.get("tag_state_weights", {})
     structures = [cases.STRUCTURES_BY_KEY[k]
@@ -1039,7 +1046,11 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=1, help="same seed => byte-identical tree")
     ap.add_argument("--limit", type=int, help="use only the first N corpus books (for a "
                                               "quick smoke test)")
+    ap.add_argument("--layout", help="force a single on-disk layout (see --list-layouts); "
+                                     "overrides the scenario's layout mix. Defaults the "
+                                     "scenario to 'existing-library-adoption' if none is given.")
     ap.add_argument("--list", action="store_true", help="list the scenarios and exit")
+    ap.add_argument("--list-layouts", action="store_true", help="list the layouts and exit")
     ap.add_argument("--force", action="store_true", help="overwrite a non-empty --out")
     args = ap.parse_args()
 
@@ -1048,20 +1059,30 @@ def main() -> int:
             print(f"{scenario.key:28} {scenario.expect}")
         return 0
 
-    if not args.scenario or not args.out:
-        ap.error("--scenario and --out are required (or --list)")
+    if args.list_layouts:
+        for layout in cases.LAYOUTS:
+            print(f"{layout.key:24} {layout.folder or '(files at library root)'}")
+        return 0
 
-    if args.scenario not in cases.SCENARIOS_BY_KEY:
-        ap.error(f"unknown scenario '{args.scenario}'. Known: "
+    if args.layout and args.layout not in cases.LAYOUTS_BY_KEY:
+        ap.error(f"unknown layout '{args.layout}'. Known: {', '.join(cases.LAYOUTS_BY_KEY)}")
+
+    # --layout alone gets a clean, correctly-tagged library (the adoption scenario).
+    scenario_key = args.scenario or ("existing-library-adoption" if args.layout else None)
+    if not scenario_key or not args.out:
+        ap.error("--scenario and --out are required (or --layout, --list, --list-layouts)")
+
+    if scenario_key not in cases.SCENARIOS_BY_KEY:
+        ap.error(f"unknown scenario '{scenario_key}'. Known: "
                  f"{', '.join(cases.SCENARIOS_BY_KEY)}")
-    scenario = cases.SCENARIOS_BY_KEY[args.scenario]
+    scenario = cases.SCENARIOS_BY_KEY[scenario_key]
 
     if args.out.exists() and any(args.out.iterdir()):
         if not args.force:
             ap.error(f"{args.out} exists and is not empty; pass --force to overwrite")
         shutil.rmtree(args.out)
 
-    manifest = generate(scenario, args.out, args.seed, args.limit)
+    manifest = generate(scenario, args.out, args.seed, args.limit, args.layout)
     print(f"scenario   {manifest['scenario']}")
     print(f"seed       {manifest['seed']}")
     print(f"books      {manifest['corpus_books']}")

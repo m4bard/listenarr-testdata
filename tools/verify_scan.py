@@ -261,21 +261,40 @@ def work_index(manifest: dict[str, Any]) -> dict[str, tuple[str, str]]:
     return index
 
 
+def in_scope(entry: dict[str, Any], only_asins: set[str] | None) -> bool:
+    """Whether this entry belongs to the set of books a scoped run actually scanned.
+
+    Scoping matters for a run that adds only a subset of the library — a perf sweep adds N books
+    but generates thousands. Without it, --strict would count every un-added book as a failure and
+    can never pass. A book is in scope by its own ASIN; its clutter by the folder it sits in.
+    """
+    if only_asins is None:
+        return True
+    if entry["kind"] == "clutter":
+        return entry.get("folder_asin") in only_asins
+    return entry.get("belongs_to_asin") in only_asins or entry.get("expect_linked_asin") in only_asins
+
+
 def compare(
     manifest: dict[str, Any],
     observations: list[Observation],
     library_root: pathlib.Path,
     root_map: tuple[str, str] | None,
+    only_asins: set[str] | None = None,
 ) -> Report:
     """Expected outcome vs observed, one row per generated file."""
     by_path: dict[str, Observation] = {}
     for observation in observations:
         by_path[normalize(observation.path, root_map)] = observation
 
+    # Built from the FULL manifest, before scoping, so a twin scoped out of the run still counts
+    # as work-equivalent for the book that remains.
     works = work_index(manifest)
 
     report = Report()
     for entry in manifest["entries"]:
+        if not in_scope(entry, only_asins):
+            continue
         if entry["kind"] == "clutter" and entry.get("clutter_kind") not in AUDIO_CLUTTER:
             continue  # not audio: never a scan candidate, so there is nothing to link
 
@@ -472,6 +491,9 @@ def main() -> int:
                     help="compare against a --snapshot: assert no file lost, no path escaped")
     ap.add_argument("--verbose", action="store_true", help="list every failure")
     ap.add_argument("--strict", action="store_true", help="exit non-zero if any case fails")
+    ap.add_argument("--only-asin", action="append", metavar="ASIN", dest="only_asins",
+                    help="restrict the verdict to these books (repeatable). Use on a run that "
+                         "added only a subset of the library, so --strict is meaningful.")
     args = ap.parse_args()
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
@@ -519,11 +541,19 @@ def main() -> int:
         print(f"SOURCE ERROR: {exc}", file=sys.stderr)
         return 2
 
+    only_asins = {a.strip().upper() for a in args.only_asins} if args.only_asins else None
+
     print(f"scenario   {manifest['scenario']}")
     print(f"expect     {manifest['expect']}")
+    if only_asins:
+        print(f"scoped to  {len(only_asins)} book(s): {', '.join(sorted(only_asins))}")
     print(f"observed   {len(observations)} linked files\n")
 
-    report = compare(manifest, observations, library_root, root_map)
+    report = compare(manifest, observations, library_root, root_map, only_asins)
+    if not report.results:
+        print("no in-scope entries to check — did --only-asin match any generated book?",
+              file=sys.stderr)
+        return 2
     print_table(report, args.verbose)
 
     for problem in check_base_paths(report, library_root):

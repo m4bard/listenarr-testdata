@@ -173,13 +173,18 @@ log INFO "root folder ${FOLDER_ID} -> /audiobooks"
 # nothing has been matched yet — which is exactly the state that makes the scan root fall
 # back to the library root.
 log INFO "adding ${BOOKS} audiobooks"
-export ROOT API API_KEY
+# The ASINs that actually add successfully are written here so the conformance check can be
+# SCOPED to exactly the books this run scanned — otherwise --strict counts every un-added
+# library book as a failure and can never pass (see verify_scan --only-asin).
+ADDED_ASINS_FILE="$(mktemp)"
+export ROOT API API_KEY ADDED_ASINS_FILE
 IDS=$("$PYTHON" - "$BOOKS" <<'PY'
 import json, os, sys, urllib.request
 
 books = json.load(open(os.path.join(os.environ["ROOT"], "corpus", "corpus.json")))["books"]
 api, key = os.environ["API"], os.environ["API_KEY"]
 ids = []
+added_asins = []
 for book in sorted(books, key=lambda b: b["asin"])[: int(sys.argv[1])]:
     payload = json.dumps({
         "metadata": {
@@ -206,8 +211,11 @@ for book in sorted(books, key=lambda b: b["asin"])[: int(sys.argv[1])]:
         book_id = body.get("id") or (body.get("audiobook") or {}).get("id")
         if book_id:
             ids.append(str(book_id))
+            added_asins.append(book["asin"])
     except Exception as exc:  # noqa: BLE001 — a book that will not add is not fatal
         print(f"could not add {book['asin']}: {exc}", file=sys.stderr)
+with open(os.environ["ADDED_ASINS_FILE"], "w") as fh:
+    fh.write("\n".join(added_asins))
 print(" ".join(ids))
 PY
 ) || die "could not add any audiobooks"
@@ -324,9 +332,23 @@ cat <<EOF
 Conformance:
 EOF
 
+# Scope the verdict to exactly the books this run added, then gate on it. Without --only-asin,
+# --strict would count every un-added library book as a failure and never pass; with it, a
+# conformance regression on a scanned book makes this exit non-zero. That exit code is the whole
+# point of #6 — it is the script's last command, and vet-against.sh execs this script, so the
+# non-zero status propagates all the way out to whatever is gating a branch or a CI run.
+ONLY_ASIN_ARGS=()
+if [[ -s "$ADDED_ASINS_FILE" ]]; then
+    while IFS= read -r asin; do
+        [[ -n "$asin" ]] && ONLY_ASIN_ARGS+=(--only-asin "$asin")
+    done < "$ADDED_ASINS_FILE"
+fi
+rm -f "$ADDED_ASINS_FILE"
+
 # verify_scan.py prepends the /api/v1 path segment itself, so it takes the un-prefixed host
 # base (passing ${API} here would double the prefix). See listenarr-testdata#1.
 "$PYTHON" "${ROOT}/tools/verify_scan.py" \
     --manifest "${LIBRARY}/manifest.json" \
     --api "http://localhost:${PORT}" --api-key "${API_KEY}" \
-    --root-map "/audiobooks=${LIBRARY}"
+    --root-map "/audiobooks=${LIBRARY}" \
+    --strict "${ONLY_ASIN_ARGS[@]}"

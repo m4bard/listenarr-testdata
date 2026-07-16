@@ -7,9 +7,11 @@ that really does lose a file.
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import shutil
 import sqlite3
+import subprocess
 import sys
 
 import pytest
@@ -298,6 +300,81 @@ class TestWorkEquivalence:
         report = compare(manifest, observations, out, None)
         result = next(r for r in report.results if r.entry["path"] == a["path"])
         assert result.verdict == "fail"
+
+
+class TestStrictExitCode:
+    """Contract: a broken scan must be able to make the pipeline exit non-zero.
+
+    The verified defect (#6): the whole flow reported green for a totally broken branch because
+    verify_scan returned 0 by default and nothing threaded --strict. These pin the exit code as a
+    real signal — including the scoping that makes --strict usable on a run that adds only a
+    subset of the library, which is why the blanket flag was unsafe to add before.
+    """
+
+    def _run(self, manifest_path: pathlib.Path, observed: list[dict], out: pathlib.Path,
+             *extra: str) -> subprocess.CompletedProcess:
+        observed_file = out / "observed.json"
+        observed_file.write_text(json.dumps(observed))
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "verify_scan.py"),
+             "--manifest", str(manifest_path), "--observed", str(observed_file), *extra],
+            capture_output=True, text=True,
+        )
+
+    def _linked(self, out: pathlib.Path, entries: list[dict]) -> list[dict]:
+        return [{"path": str(out / e["path"]), "asin": e["belongs_to_asin"],
+                 "title": e["true_title"]} for e in entries if e["kind"] == "book"]
+
+    def test_zero_links_without_strict_still_exits_zero(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        # Documents the default the defect rode in on: silence is exit 0. Kept explicit so a
+        # future change to the default is a conscious one, caught here.
+        out, manifest = library
+        result = self._run(out / "manifest.json", [], out)
+        assert result.returncode == 0
+
+    def test_zero_links_with_strict_exits_nonzero(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        # THE regression guard: a totally broken scan (nothing linked) under --strict must fail.
+        out, manifest = library
+        result = self._run(out / "manifest.json", [], out, "--strict")
+        assert result.returncode == 1
+
+    def test_a_fully_correct_scan_with_strict_exits_zero(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        out, manifest = library
+        result = self._run(out / "manifest.json", self._linked(out, manifest["entries"]),
+                           out, "--strict")
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_strict_scoped_to_scanned_books_ignores_unadded_ones(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        # The scale-perf case: only some books are added, the rest of the library is unlinked on
+        # purpose. --strict alone would fail on the un-added books forever; scoped to the one book
+        # actually scanned, a correct link passes.
+        out, manifest = library
+        books = [e for e in manifest["entries"] if e["kind"] == "book"]
+        one = books[0]["belongs_to_asin"]
+        scanned = [e for e in books if e["belongs_to_asin"] == one]
+        result = self._run(out / "manifest.json", self._linked(out, scanned),
+                           out, "--strict", "--only-asin", one)
+        assert result.returncode == 0, result.stdout + result.stderr
+        # And unscoped, the same observation fails, because the other books read as missing.
+        unscoped = self._run(out / "manifest.json", self._linked(out, scanned), out, "--strict")
+        assert unscoped.returncode == 1
+
+    def test_only_asin_matching_nothing_is_loud_not_a_silent_pass(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        # A scope that matches no generated book is a mistake, not an empty success. Exit 2, the
+        # same inconclusive code a rotted source uses — never a green 0.
+        out, manifest = library
+        result = self._run(out / "manifest.json", [], out, "--strict", "--only-asin", "NOPE")
+        assert result.returncode == 2
 
 
 class TestBasePath:

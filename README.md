@@ -38,6 +38,34 @@ TOTAL                                                     0   123
 
 The claim being tested is that this is not a *partial* failure: a correctly-tagged library in a common third-party layout is not partly discovered, it is not discovered at all. Run it against your own build and find out — that is what the repository is for.
 
+## Test a specific Listenarr branch or PR
+
+The harness drives a Listenarr container, so it can validate any branch — including one that
+rewrites the scan/path code — by building an image from source and pointing the harness at it:
+
+```bash
+# build an image from any branch (e.g. a PR branch you want to check)
+git clone --depth 1 --branch <branch> https://github.com/Listenarrs/Listenarr.git listenarr-src
+podman build -t listenarr-vet:<branch> listenarr-src
+
+# generate a library, scan it with that image, and diff what linked against the manifest
+./tools/benchmark_scan.sh \
+    --scenario existing-library-adoption --no-basepath \
+    --image localhost/listenarr-vet:<branch>
+```
+
+`--no-basepath` clears each book's BasePath so the scan root falls back to the library root —
+the state that exercises discovery and attribution. The run reports per-book scan cost and flags
+any BasePath that climbed past its own book folder, e.g.:
+
+```
+BasePath '/audiobooks/Arthur Conan Doyle' is shared by 2 books — it climbed past the book folder and swallowed a sibling
+```
+
+The library mounts read-write, matching a real deployment (Listenarr organizes files in its
+roots); determinism comes from regenerating the library from a fixed `--seed`, not from an
+immutable mount.
+
 ## Why the data is trustworthy
 
 Every book is real, in the public domain, and has audio freely available from LibriVox. Every ASIN in `corpus/corpus.json` is **machine-verified against live Audible metadata** — `tools/build_corpus.py` fetches each one from [Audnex](https://api.audnex.us), checks it resolves to the book we expected, and refuses to write an entry that does not. No ASIN in this repository was ever typed by hand or taken on trust; a plausible-looking `B0XXXXXXXX` is trivial to invent and impossible to spot by eye.

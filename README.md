@@ -6,6 +6,27 @@ It is a generator, not a library. The repository holds a manifest of real books 
 
 The point is that a bug report should not rest on "trust me, my library does this". Clone it, generate the library, point Listenarr at it, and watch the bug happen on your own machine.
 
+## Requirements
+
+Linux or macOS (or Windows via WSL2). Validated on **Ubuntu 25.10**. It needs a container
+runtime — **podman** (rootless, preferred) or **docker** — plus **bash**, **curl**, **sqlite3**,
+**ffmpeg**/**ffprobe**, and **Python 3.11+** with a venv.
+
+On Ubuntu 25.10 the non-default pieces are one line:
+
+```bash
+sudo apt install podman curl sqlite3 ffmpeg python3-venv
+```
+
+Then the Python side, once:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e .
+```
+
+`benchmark_scan.sh` checks for each of these at startup and tells you which is missing rather than
+failing partway through.
+
 ## Reproduce a bug in four commands
 
 ```bash

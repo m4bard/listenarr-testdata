@@ -102,6 +102,8 @@ else
 fi
 
 [[ -x "$PYTHON" ]] || die "no venv — run: python3 -m venv .venv && .venv/bin/pip install -e ."
+command -v curl   >/dev/null 2>&1 || die "curl is required (Ubuntu: sudo apt install curl)"
+command -v ffmpeg >/dev/null 2>&1 || die "ffmpeg is required to synthesize audio (Ubuntu: sudo apt install ffmpeg)"
 
 LIBRARY="${ROOT}/build/bench-lib"
 CONFIG="${ROOT}/build/bench-config"

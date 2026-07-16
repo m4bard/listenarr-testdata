@@ -66,6 +66,9 @@ tool you actually run instead of describing a layout by hand. `--list-layouts` p
 menu; the provenance for each convention is a permalink in the `source` field of `corpus/cases.py`,
 not just this table.
 
+Not sure which shape you have? The **[layout picker](https://m4bard.github.io/listenarr-testdata/)**
+lets you build a folder pattern, see an example path, and get the matching `--layout` command.
+
 Example paths use one book — *A Princess of Mars* (Edgar Rice Burroughs, Barsoom #1):
 
 | Your tool | `--layout` | Example path | Source |

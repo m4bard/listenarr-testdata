@@ -688,6 +688,10 @@ def emit_clutter(
             "kind": "clutter",
             "clutter_kind": kind,
             "belongs_to_asin": None,
+            # Which book's folder this junk sits in. Not a membership claim (belongs_to_asin
+            # stays None — nothing here IS the book); it just lets a scoped run keep the
+            # over-attachment check for the books it actually scanned.
+            "folder_asin": book["asin"],
             # Nothing here is the book. CollectCandidates grabs every audio file under the
             # root, so the sample, the intro and the bonus interview all reach the candidate
             # set — and a correct scanner attaches none of them to anything.

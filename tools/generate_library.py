@@ -1062,10 +1062,15 @@ def main() -> int:
     if args.list_layouts:
         for layout in cases.LAYOUTS:
             print(f"{layout.key:24} {layout.folder or '(files at library root)'}")
+        for alias, target in cases.LAYOUT_ALIASES.items():
+            print(f"{alias:24} -> {target} (alias)")
         return 0
 
-    if args.layout and args.layout not in cases.LAYOUTS_BY_KEY:
-        ap.error(f"unknown layout '{args.layout}'. Known: {', '.join(cases.LAYOUTS_BY_KEY)}")
+    # Resolve a friendly alias (e.g. `listenarr`) to its canonical layout key.
+    layout_key = cases.resolve_layout(args.layout) if args.layout else None
+    if args.layout and layout_key is None:
+        ap.error(f"unknown layout '{args.layout}'. Layouts: {', '.join(cases.LAYOUTS_BY_KEY)}. "
+                 f"Aliases: {', '.join(cases.LAYOUT_ALIASES)}")
 
     # --layout alone gets a clean, correctly-tagged library (the adoption scenario).
     scenario_key = args.scenario or ("existing-library-adoption" if args.layout else None)
@@ -1082,7 +1087,7 @@ def main() -> int:
             ap.error(f"{args.out} exists and is not empty; pass --force to overwrite")
         shutil.rmtree(args.out)
 
-    manifest = generate(scenario, args.out, args.seed, args.limit, args.layout)
+    manifest = generate(scenario, args.out, args.seed, args.limit, layout_key)
     print(f"scenario   {manifest['scenario']}")
     print(f"seed       {manifest['seed']}")
     print(f"books      {manifest['corpus_books']}")

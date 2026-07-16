@@ -92,9 +92,64 @@ def test_layout_alone_defaults_to_the_adoption_scenario(tmp_path: pathlib.Path) 
     assert book_layouts(manifest) == {"flat"}
 
 
+@needs_ffmpeg
+def test_author_title_layout_produces_author_over_title(tmp_path: pathlib.Path) -> None:
+    # {Author}/{Title}/… — the ABS-flat / Audnexus.bundle / Readarr(folder-wise) shape.
+    manifest = generate(
+        cases.SCENARIOS_BY_KEY["mixed-reality"], tmp_path / "at",
+        seed=1, limit=LIMIT, layout_override="author-title",
+    )
+    entries = [e for e in manifest["entries"] if e["kind"] == "book"]
+    assert entries
+    for entry in entries:
+        parts = pathlib.PurePosixPath(entry["path"]).parts
+        assert len(parts) == 3, f"expected author/title/file, got {entry['path']}"
+
+
+@pytest.mark.parametrize(
+    "alias,canonical",
+    [
+        ("listenarr", "author-series-title"),
+        ("plex-community", "audnex-plex"),
+        ("readarr", "author-title"),
+        ("audiobookshelf-flat", "author-title"),
+        ("audiobookshelf-series", "author-series-title"),
+    ],
+)
+def test_alias_resolves_to_its_canonical_layout(alias: str, canonical: str) -> None:
+    assert cases.resolve_layout(alias) == canonical
+
+
+def test_resolve_layout_passthrough_and_unknown() -> None:
+    assert cases.resolve_layout("author-series-title") == "author-series-title"  # a real key passes through
+    assert cases.resolve_layout("not-a-layout") is None
+
+
+def test_every_alias_points_at_a_real_layout() -> None:
+    for alias, target in cases.LAYOUT_ALIASES.items():
+        assert target in cases.LAYOUTS_BY_KEY, f"alias {alias} -> unknown layout {target}"
+
+
+def test_layout_sources_are_permalinks() -> None:
+    # Any layout that carries a source must be a URL — provenance, not prose.
+    for layout in cases.LAYOUTS:
+        if layout.source:
+            assert layout.source.startswith("https://"), f"{layout.key} source is not a URL"
+
+
+@needs_ffmpeg
+def test_layout_alias_works_on_the_cli(tmp_path: pathlib.Path) -> None:
+    out = tmp_path / "lib"
+    result = _cli("--layout", "listenarr", "--out", str(out), "--limit", str(LIMIT))
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert book_layouts(manifest) == {"author-series-title"}
+
+
 def test_list_layouts_prints_the_menu() -> None:
     result = _cli("--list-layouts")
     assert result.returncode == 0
-    # every layout key should appear
     for layout in cases.LAYOUTS:
         assert layout.key in result.stdout
+    for alias in cases.LAYOUT_ALIASES:
+        assert alias in result.stdout

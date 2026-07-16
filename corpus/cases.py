@@ -31,6 +31,10 @@ class Layout:
     folder: str
     filename: str
     note: str
+    # Where this convention was derived from — a permalink to the tool's source or docs, so a
+    # reader knows the provenance without cross-referencing the README. Empty for generic shapes
+    # that no single tool defines.
+    source: str = ""
 
 
 LAYOUTS: list[Layout] = [
@@ -53,29 +57,51 @@ LAYOUTS: list[Layout] = [
         key="audnex-plex",
         folder="{author}/{author} - {series} - {title}",
         filename="{author} - {series} - {title}",
-        note="The common Audnex/Plex convention. Carries no year, so the native "
-             "parser rejects it outright — this is the layout that parses at 0%.",
+        note="A common Plex/community audiobook convention (NOT defined by Audnexus, which is "
+             "a metadata API with no layout). Carries no year, so the native parser rejects "
+             "it outright — this is the layout that parses at 0%. Alias: plex-community.",
+        # seanap's widely-cited Plex audiobook guide (author/series/… convention):
+        source="https://github.com/seanap/Plex-Audiobook-Guide",
     ),
     Layout(
         key="author-series-title",
         folder="{author}/{series}/{title}",
         filename="{title}",
         note="{Author}/{Series}/{Title} — Listenarr's DEFAULT output layout "
-             "(FolderNamingPattern), and the shape AudioBookShelf documents. No year "
+             "(FolderNamingPattern), and one of the shapes AudioBookShelf documents. No year "
              "anywhere, so the native parser rejects it.",
+        # Listenarr FolderNamingPattern default (permalink, line 33):
+        source="https://github.com/Listenarrs/Listenarr/blob/"
+               "4555ad21e3c455ae3963836e55693207cea66d12/"
+               "listenarr.domain/Configuration/ApplicationSettings.cs#L33",
     ),
     Layout(
         key="audiobookshelf",
         folder="{author}/{series}/{series_position} - {title}",
         filename="{series} - {series_position} - {title}",
-        note="AudioBookShelf-style: series-creator folder, numbered episode files. "
-             "The layout PR #688 was written to rescue.",
+        note="AudioBookShelf-style: series-creator folder, numbered episode files. The layout "
+             "PR #688 was written to rescue, and the 'trickiest common format' — filename "
+             "carries no title, so path heuristics find nothing and it forces a tag pass.",
+        # AudioBookShelf directory-structure docs (series + numbered files):
+        source="https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/",
     ),
     Layout(
         key="flat",
         folder="{author} - {title}",
         filename="{author} - {title}",
         note="Single flat folder per book, no author directory level.",
+    ),
+    Layout(
+        key="author-title",
+        folder="{author}/{title}",
+        filename="{title}",
+        note="{Author}/{Title} — the flat form AudioBookShelf documents, the shape the "
+             "djdembeck Audnexus.bundle Plex agent expects, and (folder-wise) Readarr's "
+             "default. `--layout readarr` and `--layout audiobookshelf-flat` alias here. "
+             "Note: the harness models the FOLDER convention; the per-tool filename "
+             "(Readarr's `{Author} - {Title}`) is not distinctly generated.",
+        # AudioBookShelf directory-structure docs + Audnexus.bundle expected layout:
+        source="https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/",
     ),
     Layout(
         key="loose",
@@ -603,6 +629,27 @@ SCENARIOS: list[Scenario] = [
 
 
 LAYOUTS_BY_KEY = {layout.key: layout for layout in LAYOUTS}
+
+# Friendly tool-name shortcuts that resolve to a canonical layout key, so a caller can say
+# `--layout listenarr` instead of remembering it is `author-series-title`. Only tools with a
+# single, documented default get an alias; tools with several equally-documented shapes
+# (AudioBookShelf, Plex) are left to the README menu rather than a misleading one-to-one alias.
+LAYOUT_ALIASES = {
+    "listenarr": "author-series-title",       # {Author}/{Series}/{Title} — FolderNamingPattern default
+    "plex-community": "audnex-plex",          # {Author}/{Author} - {Series} - {Title}
+    "readarr": "author-title",                # {Author}/{Title}/… — folder shape (see author-title note)
+    "audiobookshelf-flat": "author-title",    # ABS flat form
+    "audiobookshelf-series": "author-series-title",  # ABS series form
+}
+
+
+def resolve_layout(key: str) -> str | None:
+    """Return the canonical layout key for a key-or-alias, or None if neither."""
+    if key in LAYOUTS_BY_KEY:
+        return key
+    return LAYOUT_ALIASES.get(key)
+
+
 TAG_STATES_BY_KEY = {state.key: state for state in TAG_STATES}
 STRUCTURES_BY_KEY = {structure.key: structure for structure in FILE_STRUCTURES}
 HAZARDS_BY_KEY = {hazard.key: hazard for hazard in PATH_HAZARDS}

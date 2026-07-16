@@ -46,6 +46,7 @@ set -euo pipefail
 unset TMOUT
 
 SCENARIO="scale"
+LAYOUT=""
 SEED=1
 LIMIT=""
 BOOKS=3
@@ -62,6 +63,7 @@ benchmark_scan.sh — time a Listenarr scan against a generated library.
 
 Options:
   --scenario KEY   scenario to generate (default: ${SCENARIO})
+  --layout KEY     force a single on-disk layout (or alias, e.g. 'listenarr')
   --seed N         generator seed (default: ${SEED})
   --limit N        use only the first N corpus books, i.e. shrink the library (default: all)
   --books N        how many audiobooks to add and scan (default: ${BOOKS})
@@ -77,6 +79,7 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --scenario) SCENARIO="$2"; shift 2 ;;
+        --layout)   LAYOUT="$2";   shift 2 ;;
         --seed)     SEED="$2";     shift 2 ;;
         --limit)    LIMIT="$2";    shift 2 ;;
         --books)    BOOKS="$2";    shift 2 ;;
@@ -125,7 +128,8 @@ log INFO "runtime ${RUNTIME}, image ${IMAGE}"
 log INFO "generating '${SCENARIO}' (seed ${SEED}${LIMIT:+, limit ${LIMIT}})"
 rm -rf "$LIBRARY" "$CONFIG"; mkdir -p "$CONFIG"
 "$PYTHON" "${ROOT}/tools/generate_library.py" \
-    --scenario "$SCENARIO" --out "$LIBRARY" --seed "$SEED" ${LIMIT:+--limit "$LIMIT"} --force \
+    --scenario "$SCENARIO" ${LAYOUT:+--layout "$LAYOUT"} \
+    --out "$LIBRARY" --seed "$SEED" ${LIMIT:+--limit "$LIMIT"} --force \
     >/dev/null
 
 FILES=$(find "$LIBRARY" -type f ! -name manifest.json | wc -l)

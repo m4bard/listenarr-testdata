@@ -99,19 +99,20 @@ than trust any single one. If you exercise one adversarial layout, exercise this
 
 ## Test a specific Listenarr branch or PR
 
-The harness drives a Listenarr container, so it can validate any branch — including one that
-rewrites the scan/path code — by building an image from source and pointing the harness at it:
+`vet-against.sh` builds any branch from source and runs the harness against it in one command:
 
 ```bash
-# build an image from any branch (e.g. a PR branch you want to check)
-git clone --depth 1 --branch <branch> https://github.com/Listenarrs/Listenarr.git listenarr-src
-podman build -t listenarr-vet:<branch> listenarr-src
-
-# generate a library, scan it with that image, and diff what linked against the manifest
-./tools/benchmark_scan.sh \
-    --scenario existing-library-adoption --no-basepath \
-    --image localhost/listenarr-vet:<branch>
+./tools/vet-against.sh --branch bugfix/unix-folder-name-space --layout listenarr --no-basepath
 ```
+
+It clones the branch, builds a container image tagged by commit (reused if already built), scans
+a generated library against it, and drops the clone (the image is cached, the clone is not). Any
+flag it doesn't recognise is forwarded to `benchmark_scan.sh` — `--layout`, `--scenario`,
+`--books`, `--no-basepath`, `--keep`. Pass `--dry-run` to print the plan without touching anything,
+or `--repo URL` to build a fork.
+
+Under the hood it is just clone → `podman build` → `benchmark_scan.sh --image …`; run those by
+hand if you prefer.
 
 `--no-basepath` clears each book's BasePath so the scan root falls back to the library root —
 the state that exercises discovery and attribution. The run reports per-book scan cost and flags

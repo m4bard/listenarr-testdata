@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>listenarr-testdata · layout picker</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --bg: #fff; --muted: #666; --accent: #2b6cb0; --card: #f5f5f5; --border: #ddd; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e6e6e6; --bg: #16181d; --muted: #9aa0aa; --accent: #6ab0f3; --card: #21242b; --border: #333; } }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 2rem 1rem; }
+  main { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  p.lead { color: var(--muted); margin: 0 0 1.5rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+  label { display: block; font-weight: 600; margin-bottom: .4rem; }
+  input[type=text] { width: 100%; font: 14px monospace; padding: .55rem .6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  .btns { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0; }
+  button { font: 13px system-ui, sans-serif; padding: .35rem .6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.token { font-family: monospace; }
+  .presets button { text-align: left; }
+  pre { overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: .6rem; font-size: 13px; margin: .5rem 0 0; }
+  .match { font-weight: 600; }
+  .match.custom { color: var(--muted); font-weight: 400; }
+  a { color: var(--accent); }
+  .foot { color: var(--muted); font-size: 13px; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Audiobook layout picker</h1>
+  <p class="lead">Build the folder shape your tool uses, see an example path, and get the
+    <code>--layout</code> command to generate a matching test library. Part of
+    <a href="https://github.com/m4bard/listenarr-testdata">listenarr-testdata</a>.</p>
+
+  <div class="card presets">
+    <label>Start from a tool</label>
+    <div class="btns" id="presets"></div>
+  </div>
+
+  <div class="card">
+    <label for="pattern">Folder pattern</label>
+    <input id="pattern" type="text" value="{Author}/{Series}/{Title}" spellcheck="false">
+    <div class="btns" id="tokens"></div>
+  </div>
+
+  <div class="card">
+    <label>Example path</label>
+    <pre id="preview"></pre>
+  </div>
+
+  <div class="card">
+    <p class="match" id="match"></p>
+    <pre id="command"></pre>
+  </div>
+
+  <p class="foot">Example book: <em>A Princess of Mars</em> (Edgar Rice Burroughs, Barsoom #1).
+    Provenance for each convention is a <code>source</code> permalink in
+    <a href="https://github.com/m4bard/listenarr-testdata/blob/main/corpus/cases.py">corpus/cases.py</a>.</p>
+</main>
+
+<script type="module">
+import { PRESETS, TOKENS, renderPath, matchPreset, commandFor } from "./layouts.js";
+
+const $ = (id) => document.getElementById(id);
+const pattern = $("pattern");
+
+// token-insert buttons
+for (const tok of [...TOKENS, "/"]) {
+  const b = document.createElement("button");
+  b.className = "token"; b.textContent = tok;
+  b.onclick = () => { insertAtCursor(pattern, tok); update(); };
+  $("tokens").appendChild(b);
+}
+
+// preset quick-pick buttons
+for (const p of PRESETS) {
+  const b = document.createElement("button");
+  b.textContent = p.tool;
+  b.onclick = () => { pattern.value = p.folder; update(); };
+  $("presets").appendChild(b);
+}
+
+function insertAtCursor(el, text) {
+  const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, s) + text + el.value.slice(e);
+  el.focus();
+  const pos = s + text.length; el.setSelectionRange(pos, pos);
+}
+
+function update() {
+  const folder = pattern.value;
+  $("preview").textContent = folder.trim() ? renderPath(folder) : "(empty)";
+  const preset = matchPreset(folder);
+  const match = $("match");
+  if (preset) {
+    match.className = "match";
+    match.innerHTML = `Looks like: <strong>${preset.tool}</strong> · <a href="${preset.source}">source</a>`;
+  } else {
+    match.className = "match custom";
+    match.textContent = "Custom shape — no preset matches it exactly.";
+  }
+  $("command").textContent = commandFor(folder);
+}
+
+pattern.addEventListener("input", update);
+update();
+</script>
+</body>
+</html>

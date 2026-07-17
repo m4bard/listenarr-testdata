@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node is required to run the picker's JS tests")
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is required for the picker JS tests")
 def test_picker_logic_passes_node_tests() -> None:
     result = subprocess.run(
         ["node", "--test", str(DOCS)], capture_output=True, text=True,

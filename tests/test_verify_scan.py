@@ -330,7 +330,7 @@ class TestStrictExitCode:
     ) -> None:
         # Documents the default the defect rode in on: silence is exit 0. Kept explicit so a
         # future change to the default is a conscious one, caught here.
-        out, manifest = library
+        out, _ = library
         result = self._run(out / "manifest.json", [], out)
         assert result.returncode == 0
 
@@ -338,7 +338,7 @@ class TestStrictExitCode:
         self, library: tuple[pathlib.Path, dict]
     ) -> None:
         # THE regression guard: a totally broken scan (nothing linked) under --strict must fail.
-        out, manifest = library
+        out, _ = library
         result = self._run(out / "manifest.json", [], out, "--strict")
         assert result.returncode == 1
 
@@ -372,7 +372,7 @@ class TestStrictExitCode:
     ) -> None:
         # A scope that matches no generated book is a mistake, not an empty success. Exit 2, the
         # same inconclusive code a rotted source uses — never a green 0.
-        out, manifest = library
+        out, _ = library
         result = self._run(out / "manifest.json", [], out, "--strict", "--only-asin", "NOPE")
         assert result.returncode == 2
 
@@ -409,7 +409,7 @@ class TestMachineOutput:
     def test_a_broken_scan_serializes_to_fail(
         self, library: tuple[pathlib.Path, dict]
     ) -> None:
-        out, manifest = library
+        out, _ = library
         result = self._run(out / "manifest.json", [], out, "--json", "-", "--strict")
         payload = json.loads(result.stdout)
         assert payload["summary"]["overall"] == "fail"
@@ -429,7 +429,7 @@ class TestMachineOutput:
     def test_junit_marks_failures_for_a_broken_scan(
         self, library: tuple[pathlib.Path, dict]
     ) -> None:
-        out, manifest = library
+        out, _ = library
         junit = out / "out.xml"
         self._run(out / "manifest.json", [], out, "--junit", str(junit), "--strict")
         text = junit.read_text()
@@ -451,7 +451,6 @@ class TestMachineOutput:
         # The #8 failure mode through the machine surface: a moved schema must serialize as
         # inconclusive, NEVER a green artifact a gate could read as success.
         out = tmp_path / "lib"
-        manifest_path = out
         out.mkdir()
         (out / "manifest.json").write_text(json.dumps({"scenario": "x", "expect": "y",
                                                        "entries": []}))

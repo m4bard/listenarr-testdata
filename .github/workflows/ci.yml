@@ -1,0 +1,59 @@
+name: CI
+
+# The PR gate. Lint, type-check, and run the whole suite — including the verdict-contract tests
+# (see issue #15) — on every push to main and every pull request. The suite is container-free and
+# fast; the container-based conformance runs live in tools/vet-against.sh for local use.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # ffmpeg synthesizes the silent audio the generation tests need; without it those tests
+      # skip and the suite would pass while testing far less than it looks like it does.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install the project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Type-check (mypy)
+        run: mypy
+
+      - name: Test (pytest)
+        run: python -m pytest -q
+
+      # A self-test of the gate itself (issue #15): prove that a broken scan makes THIS workflow
+      # red, not just that a unit test asserts it would. Generate one book, observe zero links, and
+      # confirm verify_scan --strict exits non-zero. If a broken scan ever exits 0 here, the gate is
+      # decorative — so we fail loudly when the failure path stops failing.
+      - name: Gate self-test — a broken scan must exit non-zero
+        run: |
+          set -euo pipefail
+          python tools/generate_library.py --scenario happy-path \
+            --out /tmp/gate --seed 1 --limit 1 --force >/dev/null
+          echo '[]' > /tmp/empty-observed.json
+          if python tools/verify_scan.py --manifest /tmp/gate/manifest.json \
+               --observed /tmp/empty-observed.json --strict; then
+            echo "GATE BROKEN: a zero-link scan passed --strict (exit 0)"
+            exit 1
+          fi
+          echo "gate ok: the broken scan correctly failed the gate"

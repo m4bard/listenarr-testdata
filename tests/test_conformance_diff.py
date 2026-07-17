@@ -16,7 +16,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-from conformance_diff import DiffError, diff_reports  # noqa: E402
+from conformance_diff import DiffError, diff_reports
 
 
 def report(*results: tuple[str, str]) -> dict:
@@ -74,7 +74,8 @@ class TestClassification:
 class TestGate:
     """The contract: a regression can fail the gate; a clean diff cannot."""
 
-    def _run(self, tmp_path: pathlib.Path, base: dict, head: dict, *extra: str):
+    def _run(self, tmp_path: pathlib.Path, base: dict, head: dict,
+             *extra: str) -> subprocess.CompletedProcess:
         (tmp_path / "base.json").write_text(json.dumps(base))
         (tmp_path / "head.json").write_text(json.dumps(head))
         return subprocess.run(

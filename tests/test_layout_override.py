@@ -17,8 +17,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "corpus"))
 
-import cases  # noqa: E402
-from generate_library import generate  # noqa: E402
+import cases
+from generate_library import generate
 
 needs_ffmpeg = pytest.mark.skipif(
     shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
@@ -121,7 +121,8 @@ def test_alias_resolves_to_its_canonical_layout(alias: str, canonical: str) -> N
 
 
 def test_resolve_layout_passthrough_and_unknown() -> None:
-    assert cases.resolve_layout("author-series-title") == "author-series-title"  # a real key passes through
+    # a real key passes through unchanged; an unknown one resolves to None
+    assert cases.resolve_layout("author-series-title") == "author-series-title"
     assert cases.resolve_layout("not-a-layout") is None
 
 

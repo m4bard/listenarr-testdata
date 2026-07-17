@@ -105,7 +105,7 @@ class Report:
 
 def result_case(result: Result) -> str:
     """The case label a result groups under — same axis the text table uses."""
-    return result.entry.get("tag_state", result.entry.get("clutter_kind", "-"))
+    return str(result.entry.get("tag_state", result.entry.get("clutter_kind", "-")))
 
 
 def report_to_dict(
@@ -348,7 +348,8 @@ def in_scope(entry: dict[str, Any], only_asins: set[str] | None) -> bool:
         return True
     if entry["kind"] == "clutter":
         return entry.get("folder_asin") in only_asins
-    return entry.get("belongs_to_asin") in only_asins or entry.get("expect_linked_asin") in only_asins
+    return (entry.get("belongs_to_asin") in only_asins
+            or entry.get("expect_linked_asin") in only_asins)
 
 
 def compare(
@@ -409,17 +410,15 @@ def compare(
                 # still correct. Equivalent iff both ASINs resolve to the same (series_asin,
                 # position). Compared straight off the manifest, so a twin that is not itself in
                 # this library cannot be spoofed in.
-                expected_work = (
-                    (entry["true_series_asin"], str(entry["true_series_position"]))
-                    if entry.get("true_series_asin") and entry.get("true_series_position") is not None
-                    else None
-                )
-                observed_work = works.get(observed.asin)
-                if expected_work is not None and observed_work == expected_work:
+                expected_series = entry.get("true_series_asin")
+                expected_pos = entry.get("true_series_position")
+                observed_work = works.get(observed.asin) if observed.asin else None
+                if (expected_series and expected_pos is not None and observed_work is not None
+                        and observed_work == (expected_series, str(expected_pos))):
                     ok = True
                     why = (
                         f"linked to {observed.asin}, a work-equivalent manifestation of "
-                        f"{expected} (series {expected_work[0]} #{expected_work[1]})"
+                        f"{expected} (series {expected_series} #{expected_pos})"
                     )
                 else:
                     why = (

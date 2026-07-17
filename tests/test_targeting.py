@@ -13,8 +13,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "corpus"))
 
-import cases  # noqa: E402
-from generate_library import generate, load_corpus, select_books  # noqa: E402
+import cases
+from generate_library import generate, load_corpus, select_books
 
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg required")
 
@@ -60,7 +60,8 @@ def test_cli_only_asin_makes_a_single_book_repro(tmp_path: pathlib.Path) -> None
     assert result.returncode == 0, result.stderr
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["scenario"] == "existing-library-adoption"  # --only-asin alone defaults it
-    assert {e["belongs_to_asin"] for e in manifest["entries"] if e["kind"] == "book"} == {"B00CQ5WAXW"}
+    book_asins = {e["belongs_to_asin"] for e in manifest["entries"] if e["kind"] == "book"}
+    assert book_asins == {"B00CQ5WAXW"}
 
 
 @needs_ffmpeg

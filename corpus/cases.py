@@ -635,9 +635,9 @@ LAYOUTS_BY_KEY = {layout.key: layout for layout in LAYOUTS}
 # single, documented default get an alias; tools with several equally-documented shapes
 # (AudioBookShelf, Plex) are left to the README menu rather than a misleading one-to-one alias.
 LAYOUT_ALIASES = {
-    "listenarr": "author-series-title",       # {Author}/{Series}/{Title} — FolderNamingPattern default
+    "listenarr": "author-series-title",       # {Author}/{Series}/{Title} — the default pattern
     "plex-community": "audnex-plex",          # {Author}/{Author} - {Series} - {Title}
-    "readarr": "author-title",                # {Author}/{Title}/… — folder shape (see author-title note)
+    "readarr": "author-title",                # {Author}/{Title}/… — folder shape (see note)
     "audiobookshelf-flat": "author-title",    # ABS flat form
     "audiobookshelf-series": "author-series-title",  # ABS series form
 }

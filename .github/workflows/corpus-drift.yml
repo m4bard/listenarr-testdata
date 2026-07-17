@@ -1,0 +1,29 @@
+name: Corpus drift
+
+# The corpus pins real Audible ASINs and asserts real region-locks. Audible metadata moves —
+# an ASIN can be re-issued, merged, or region-changed — and if it drifts, every example built on
+# it quietly stops meaning what the README says it means. This runs build_corpus.py --check against
+# live api.audnex.us on a schedule so the drift surfaces as a red run here, not as a confusing test
+# failure weeks later. It needs the network, so it is deliberately NOT part of the PR gate.
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:        # and on demand
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Verify every ASIN still resolves and matches
+        run: python tools/build_corpus.py --check

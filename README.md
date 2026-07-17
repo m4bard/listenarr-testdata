@@ -217,7 +217,8 @@ corpus/corpus.json          123 verified books, generated — do not hand-edit
 corpus/cases.py             the six axes and fourteen scenarios. Start here.
 tools/build_corpus.py       fetches and verifies every ASIN against live metadata
 tools/generate_library.py   the generator
-tools/verify_scan.py        expected vs observed; the rename audit
+tools/verify_scan.py        expected vs observed; the rename audit; --json/--junit
+tools/conformance_diff.py   A/B two --json reports: what a branch fixed and regressed
 tests/                      the test suite
 ```
 

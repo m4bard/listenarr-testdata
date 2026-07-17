@@ -185,7 +185,7 @@ A few scenarios worth knowing about:
 - **`rename-hazards`** — the destructive one. See below.
 - **`scale`** — volume rather than variety: ~98,000 files. This is the scenario that lets you *measure* the ffprobe fan-out instead of estimating it.
 
-Everything is deterministic. The same `--seed` regenerates a byte-identical tree, so a maintainer and a reporter can be certain they are looking at the same library.
+Generation is deterministic where it counts. The same `--seed` regenerates the same *shape* on any machine — identical folder names, file names, embedded tag values, and manifest — because all of that comes from seeded Python, not the environment. So a maintainer and a reporter running the same seed are looking at the same library in every respect a scan or a rename can observe. The one thing that is **not** guaranteed byte-for-byte across machines is the audio payload itself: it is silence synthesized by ffmpeg, and different ffmpeg builds emit slightly different encoder padding and metadata. If you need the media bytes to match too (rarely — the tags and paths are what scanners read), pin the ffmpeg version.
 
 ## The destructive axis
 
@@ -203,6 +203,8 @@ Most scan bugs leave a file unlinked, which is annoying. A rename bug destroys d
 The audit asserts that **no file was lost and no path escaped the library root**. Files are tracked by content, not by name — a rename is precisely a change of name, so the question is not whether a given path still exists but whether every byte that was there still exists somewhere under the root.
 
 The hazards are the ones that really bite: path-illegal characters, the 255-**byte** component limit (bytes, not characters — a Cyrillic or CJK title overflows at roughly a third of the character count you would expect), Windows `MAX_PATH`, reserved device names like `CON`, NFC/NFD normalization, case collisions, and **path traversal**.
+
+One caveat worth stating plainly, because a green audit is easy to over-read: **a clean run on Linux proves POSIX-safety, not Windows or macOS safety.** Several of these hazards only *manifest* on the filesystem they target. A case collision (`She` vs `she`) does not destroy anything on a case-sensitive ext4 — both files coexist — but silently overwrites on case-insensitive NTFS or APFS. A reserved name like `CON`, or a component that overflows `MAX_PATH`, is a perfectly legal filename on Linux and only fails on Windows. So the generator faithfully *writes* every hazard on any host, and the data-loss and traversal checks (which are filesystem-agnostic) are meaningful everywhere — but the case-collision and reserved-name outcomes are only exercised when the audit runs on a case-insensitive or Windows filesystem. Run it there too before calling a renamer safe for those platforms.
 
 That last one deserves saying plainly: **embedded tags are attacker-controlled input.** A title of `../../../../etc` interpolated into a rename target escapes the library root. The generator writes exactly that string into a real tag, so you can find out what your renamer does with it.
 

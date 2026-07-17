@@ -97,11 +97,6 @@ class Report:
     def failed(self) -> int:
         return len(self.results) - self.passed
 
-    @property
-    def overall(self) -> str:
-        """The one-word verdict a machine consumer gates on."""
-        return "fail" if self.failed else "pass"
-
 
 def result_case(result: Result) -> str:
     """The case label a result groups under — same axis the text table uses."""
@@ -113,8 +108,15 @@ def report_to_dict(
     manifest: dict[str, Any],
     only_asins: set[str] | None,
     base_path_problems: list[str],
+    dedup_problems: list[str],
 ) -> dict[str, Any]:
-    """The machine-readable form of a run. `overall` is the field a CI gate reads."""
+    """The machine-readable form of a run. `overall` is the field a CI gate reads.
+
+    `overall` folds in the structural assertions (BasePath, dedup) as well as per-file links: a
+    library where every file is linked to the right ASIN can still be wrong at the work level, and
+    a gate must see that as a failure, not a pass with a footnote."""
+    structural = base_path_problems + dedup_problems
+    overall = "fail" if (report.failed or structural) else "pass"
     return {
         "scenario": manifest.get("scenario"),
         "expect": manifest.get("expect"),
@@ -123,9 +125,10 @@ def report_to_dict(
             "passed": report.passed,
             "failed": report.failed,
             "total": len(report.results),
-            "overall": report.overall,
+            "overall": overall,
         },
         "base_path_problems": base_path_problems,
+        "dedup_problems": dedup_problems,
         "results": [
             {
                 "path": r.entry["path"],
@@ -146,17 +149,22 @@ def _xml_escape(text: str) -> str:
                 .replace('"', "&quot;"))
 
 
-def report_to_junit(report: Report, manifest: dict[str, Any]) -> str:
+def report_to_junit(report: Report, manifest: dict[str, Any],
+                    structural_problems: list[str] | None = None) -> str:
     """A JUnit suite: one <testcase> per file, a <failure> on anything that is not a pass.
 
     Failures carry the same `why` the text table prints, so a CI that renders JUnit shows the
-    reason inline instead of making someone re-run with --verbose.
+    reason inline instead of making someone re-run with --verbose. Structural problems (BasePath
+    overmatch, un-deduped editions) are added as their own testcases so the JUnit verdict matches
+    the JSON `overall` — a work-level failure is not invisible just because no single file failed.
     """
+    structural = structural_problems or []
     scenario = manifest.get("scenario", "conformance")
     lines = ['<?xml version="1.0" encoding="UTF-8"?>']
     lines.append(
         f'<testsuite name="conformance:{_xml_escape(str(scenario))}" '
-        f'tests="{len(report.results)}" failures="{report.failed}">'
+        f'tests="{len(report.results) + len(structural)}" '
+        f'failures="{report.failed + len(structural)}">'
     )
     for r in report.results:
         name = _xml_escape(f"{r.entry.get('layout', '-')}/{result_case(r)}/{r.entry['path']}")
@@ -170,6 +178,11 @@ def report_to_junit(report: Report, manifest: dict[str, Any]) -> str:
                 f'{_xml_escape(r.why or r.verdict)}</failure>'
             )
             lines.append("  </testcase>")
+    for index, problem in enumerate(structural):
+        lines.append(f'  <testcase name="structural/{index}" '
+                     f'classname="{_xml_escape(str(scenario))}">')
+        lines.append(f'    <failure message="structural">{_xml_escape(problem)}</failure>')
+        lines.append("  </testcase>")
     lines.append("</testsuite>")
     return "\n".join(lines) + "\n"
 
@@ -463,6 +476,40 @@ def check_base_paths(report: Report, library_root: pathlib.Path) -> list[str]:
     return problems
 
 
+def check_dedup(report: Report, manifest: dict[str, Any]) -> list[str]:
+    """Editions of ONE work must collapse to one library record, not proliferate.
+
+    The `series-work-key` / `duplicate-editions` scenarios put two ASINs of a single work in the
+    library, and the declared expectation is that they dedupe to one work. This asserts it from
+    the other direction: if the observations show more than one distinct Listenarr record
+    (`book_id`) for a single work key, dedup did not happen and the user has two entries for one
+    book. It is a per-file link check's blind spot — every file can be linked to the "right" ASIN
+    and the library still be wrong at the work level.
+
+    Needs `book_id` to tell records apart; a source that carries none (a bare --observed list) is
+    skipped rather than guessed at, because two ASINs always look distinct without it.
+    """
+    works = work_index(manifest)
+    records_by_work: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
+    for result in report.results:
+        observed = result.observed
+        if not observed or not observed.asin or observed.book_id is None:
+            continue
+        work_key = works.get(observed.asin)
+        if work_key:
+            records_by_work[work_key].add(observed.book_id)
+
+    problems: list[str] = []
+    for (series_asin, position), records in sorted(records_by_work.items()):
+        if len(records) > 1:
+            problems.append(
+                f"work {series_asin} #{position} has {len(records)} separate records "
+                f"(book ids {', '.join(str(r) for r in sorted(records))}) — duplicate editions "
+                "were not deduplicated to one work"
+            )
+    return problems
+
+
 # --------------------------------------------------------------------------
 # The destructive check: a rename must not lose a file or escape the root
 # --------------------------------------------------------------------------
@@ -666,23 +713,31 @@ def main() -> int:
         return 2
 
     base_path_problems = check_base_paths(report, library_root)
+    dedup_problems = check_dedup(report, manifest)
 
     if args.json:
-        text = json.dumps(report_to_dict(report, manifest, only_asins, base_path_problems),
-                          indent=2) + "\n"
+        text = json.dumps(
+            report_to_dict(report, manifest, only_asins, base_path_problems, dedup_problems),
+            indent=2) + "\n"
         if json_to_stdout:
             print(text, end="")
         else:
             pathlib.Path(args.json).write_text(text)
     if args.junit:
-        pathlib.Path(args.junit).write_text(report_to_junit(report, manifest))
+        pathlib.Path(args.junit).write_text(
+            report_to_junit(report, manifest, base_path_problems + dedup_problems))
 
     if not json_to_stdout:
         print_table(report, args.verbose)
         for problem in base_path_problems:
             print(f"\nBASEPATH: {problem}")
+        for problem in dedup_problems:
+            print(f"\nDEDUP: {problem}")
 
-    return 1 if (args.strict and report.failed) else 0
+    # A structural failure (BasePath overmatch, un-deduped editions) is a real conformance failure
+    # even when every per-file link is individually correct, so --strict gates on it too.
+    structural = base_path_problems + dedup_problems
+    return 1 if (args.strict and (report.failed or structural)) else 0
 
 
 if __name__ == "__main__":

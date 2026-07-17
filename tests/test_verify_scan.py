@@ -27,6 +27,7 @@ from verify_scan import (
     SourceError,
     audit,
     check_base_paths,
+    check_dedup,
     compare,
     from_sqlite,
     normalize,
@@ -300,6 +301,74 @@ class TestWorkEquivalence:
         report = compare(manifest, observations, out, None)
         result = next(r for r in report.results if r.entry["path"] == a["path"])
         assert result.verdict == "fail"
+
+
+class TestDedup:
+    """Contract: editions of one work must collapse to one record. A per-file link check is blind
+    to this — every file can link to the right ASIN while the library holds two entries for one
+    book. This is the work-level assertion the duplicate-editions scenario was missing.
+    """
+
+    @pytest.fixture
+    def twins(self, tmp_path: pathlib.Path) -> tuple[pathlib.Path, dict, dict, dict]:
+        out = tmp_path / "lib"
+        manifest = generate(cases.SCENARIOS_BY_KEY["series-work-key"], out, seed=1)
+        by_work: dict[tuple, list[dict]] = {}
+        for e in manifest["entries"]:
+            if e["kind"] != "book" or not e.get("true_series_asin"):
+                continue
+            by_work.setdefault(
+                (e["true_series_asin"], str(e["true_series_position"])), []
+            ).append(e)
+        pair = next(entries for entries in by_work.values()
+                    if len({e["belongs_to_asin"] for e in entries}) > 1)
+        a = pair[0]
+        b = next(e for e in pair if e["belongs_to_asin"] != a["belongs_to_asin"])
+        return out, manifest, a, b
+
+    def _obs(self, out: pathlib.Path, a: dict, b: dict,
+             id_a: int | None, id_b: int | None) -> list[Observation]:
+        return [
+            Observation(path=str(out / a["path"]), asin=a["belongs_to_asin"], book_id=id_a),
+            Observation(path=str(out / b["path"]), asin=b["belongs_to_asin"], book_id=id_b),
+        ]
+
+    def test_two_records_for_one_work_is_flagged(
+        self, twins: tuple[pathlib.Path, dict, dict, dict]
+    ) -> None:
+        # Both files link to the right ASIN (per-file: pass) but under two separate records —
+        # the exact failure a link check cannot see.
+        out, manifest, a, b = twins
+        report = compare(manifest, self._obs(out, a, b, 1, 2), out, None)
+        assert any("not deduplicated" in p for p in check_dedup(report, manifest))
+
+    def test_one_record_for_one_work_is_clean(
+        self, twins: tuple[pathlib.Path, dict, dict, dict]
+    ) -> None:
+        out, manifest, a, b = twins
+        report = compare(manifest, self._obs(out, a, b, 1, 1), out, None)
+        assert check_dedup(report, manifest) == []
+
+    def test_without_book_ids_dedup_is_skipped_not_guessed(
+        self, twins: tuple[pathlib.Path, dict, dict, dict]
+    ) -> None:
+        # A source with no record identity cannot judge dedup, and must not false-positive: two
+        # ASINs always look distinct without a book_id to tie them to one record.
+        out, manifest, a, b = twins
+        report = compare(manifest, self._obs(out, a, b, None, None), out, None)
+        assert check_dedup(report, manifest) == []
+
+    def test_a_dedup_problem_makes_overall_fail(
+        self, twins: tuple[pathlib.Path, dict, dict, dict]
+    ) -> None:
+        # The gate contract: a library correct at the file level but wrong at the work level must
+        # serialize to overall=fail, not pass-with-a-footnote.
+        from verify_scan import report_to_dict
+        out, manifest, a, b = twins
+        report = compare(manifest, self._obs(out, a, b, 1, 2), out, None)
+        payload = report_to_dict(report, manifest, None, [], check_dedup(report, manifest))
+        assert payload["summary"]["overall"] == "fail"
+        assert payload["dedup_problems"]
 
 
 class TestStrictExitCode:

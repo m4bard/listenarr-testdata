@@ -63,6 +63,8 @@ The claim being tested is that this is not a *partial* failure: a correctly-tagg
 
 For a gate rather than a read, add `--strict` (exit non-zero on any failure) and, for machines, `--json -` or `--junit report.xml`. The JSON carries a `summary.overall` of `pass`, `fail`, or `inconclusive` — the last being a rotted source or an empty scope, so a broken *harness* never reads as a green *scan*. On a run that adds only some of the library (a perf sweep), scope the verdict with `--only-asin` so `--strict` counts only the books you actually scanned.
 
+The verdict folds in the *work-level* assertions too, not just per-file links: a `BasePath` that swallowed a sibling, and duplicate editions of one work that were not deduplicated to a single record (`dedup_problems` in the JSON). A library where every file is linked to the right ASIN can still be wrong at the work level, and `--strict` treats that as a failure rather than a footnote.
+
 ## Library layouts — generate one that matches your tool
 
 `--layout <name>` produces a library in a single on-disk convention, so you can mirror whatever

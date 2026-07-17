@@ -97,6 +97,82 @@ class Report:
     def failed(self) -> int:
         return len(self.results) - self.passed
 
+    @property
+    def overall(self) -> str:
+        """The one-word verdict a machine consumer gates on."""
+        return "fail" if self.failed else "pass"
+
+
+def result_case(result: Result) -> str:
+    """The case label a result groups under — same axis the text table uses."""
+    return result.entry.get("tag_state", result.entry.get("clutter_kind", "-"))
+
+
+def report_to_dict(
+    report: Report,
+    manifest: dict[str, Any],
+    only_asins: set[str] | None,
+    base_path_problems: list[str],
+) -> dict[str, Any]:
+    """The machine-readable form of a run. `overall` is the field a CI gate reads."""
+    return {
+        "scenario": manifest.get("scenario"),
+        "expect": manifest.get("expect"),
+        "scoped_to": sorted(only_asins) if only_asins else None,
+        "summary": {
+            "passed": report.passed,
+            "failed": report.failed,
+            "total": len(report.results),
+            "overall": report.overall,
+        },
+        "base_path_problems": base_path_problems,
+        "results": [
+            {
+                "path": r.entry["path"],
+                "verdict": r.verdict,
+                "layout": r.entry.get("layout", "-"),
+                "case": result_case(r),
+                "expected_asin": r.entry.get("expect_linked_asin"),
+                "observed_asin": r.observed.asin if r.observed else None,
+                "why": r.why,
+            }
+            for r in report.results
+        ],
+    }
+
+
+def _xml_escape(text: str) -> str:
+    return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace('"', "&quot;"))
+
+
+def report_to_junit(report: Report, manifest: dict[str, Any]) -> str:
+    """A JUnit suite: one <testcase> per file, a <failure> on anything that is not a pass.
+
+    Failures carry the same `why` the text table prints, so a CI that renders JUnit shows the
+    reason inline instead of making someone re-run with --verbose.
+    """
+    scenario = manifest.get("scenario", "conformance")
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+    lines.append(
+        f'<testsuite name="conformance:{_xml_escape(str(scenario))}" '
+        f'tests="{len(report.results)}" failures="{report.failed}">'
+    )
+    for r in report.results:
+        name = _xml_escape(f"{r.entry.get('layout', '-')}/{result_case(r)}/{r.entry['path']}")
+        case = f'  <testcase name="{name}" classname="{_xml_escape(str(scenario))}"'
+        if r.verdict == "pass":
+            lines.append(case + "/>")
+        else:
+            lines.append(case + ">")
+            lines.append(
+                f'    <failure message="{_xml_escape(r.verdict)}">'
+                f'{_xml_escape(r.why or r.verdict)}</failure>'
+            )
+            lines.append("  </testcase>")
+    lines.append("</testsuite>")
+    return "\n".join(lines) + "\n"
+
 
 # --------------------------------------------------------------------------
 # Sources of observation
@@ -494,6 +570,11 @@ def main() -> int:
     ap.add_argument("--only-asin", action="append", metavar="ASIN", dest="only_asins",
                     help="restrict the verdict to these books (repeatable). Use on a run that "
                          "added only a subset of the library, so --strict is meaningful.")
+    ap.add_argument("--json", metavar="PATH",
+                    help="write a machine-readable JSON report to PATH ('-' for stdout, which "
+                         "suppresses the text table). `summary.overall` is the field to gate on.")
+    ap.add_argument("--junit", metavar="PATH",
+                    help="write a JUnit XML report to PATH, for CI test-result rendering.")
     args = ap.parse_args()
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
@@ -525,6 +606,33 @@ def main() -> int:
         remote, local = args.root_map.split("=", 1)
         root_map = (remote, local)
 
+    # JSON to stdout must be the ONLY thing on stdout, or a consumer cannot parse it.
+    json_to_stdout = args.json == "-"
+
+    def emit_inconclusive(reason: str) -> None:
+        """An inconclusive run (rotted source, empty scope) still has to produce the machine
+        artifacts a CI asked for — as `overall: inconclusive`, never a missing file that a gate
+        might read as success."""
+        payload = {
+            "scenario": manifest.get("scenario"),
+            "summary": {"passed": 0, "failed": 0, "total": 0, "overall": "inconclusive"},
+            "error": reason,
+        }
+        if args.json:
+            text = json.dumps(payload, indent=2) + "\n"
+            if json_to_stdout:
+                print(text, end="")
+            else:
+                pathlib.Path(args.json).write_text(text)
+        if args.junit:
+            pathlib.Path(args.junit).write_text(
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                f'<testsuite name="conformance:{_xml_escape(str(manifest.get("scenario")))}" '
+                'tests="1" failures="0" errors="1">\n'
+                f'  <testcase name="run"><error message="inconclusive">{_xml_escape(reason)}'
+                "</error></testcase>\n</testsuite>\n"
+            )
+
     try:
         if args.db:
             observations = from_sqlite(args.db)
@@ -539,25 +647,41 @@ def main() -> int:
         # not read as a green scan. Exit 2 (distinct from 1 = real conformance fail) so a caller
         # can tell "the harness could not look" from "the scan got it wrong".
         print(f"SOURCE ERROR: {exc}", file=sys.stderr)
+        emit_inconclusive(f"source error: {exc}")
         return 2
 
     only_asins = {a.strip().upper() for a in args.only_asins} if args.only_asins else None
 
-    print(f"scenario   {manifest['scenario']}")
-    print(f"expect     {manifest['expect']}")
-    if only_asins:
-        print(f"scoped to  {len(only_asins)} book(s): {', '.join(sorted(only_asins))}")
-    print(f"observed   {len(observations)} linked files\n")
+    if not json_to_stdout:
+        print(f"scenario   {manifest['scenario']}")
+        print(f"expect     {manifest['expect']}")
+        if only_asins:
+            print(f"scoped to  {len(only_asins)} book(s): {', '.join(sorted(only_asins))}")
+        print(f"observed   {len(observations)} linked files\n")
 
     report = compare(manifest, observations, library_root, root_map, only_asins)
     if not report.results:
         print("no in-scope entries to check — did --only-asin match any generated book?",
               file=sys.stderr)
+        emit_inconclusive("no in-scope entries — --only-asin matched no generated book")
         return 2
-    print_table(report, args.verbose)
 
-    for problem in check_base_paths(report, library_root):
-        print(f"\nBASEPATH: {problem}")
+    base_path_problems = check_base_paths(report, library_root)
+
+    if args.json:
+        text = json.dumps(report_to_dict(report, manifest, only_asins, base_path_problems),
+                          indent=2) + "\n"
+        if json_to_stdout:
+            print(text, end="")
+        else:
+            pathlib.Path(args.json).write_text(text)
+    if args.junit:
+        pathlib.Path(args.junit).write_text(report_to_junit(report, manifest))
+
+    if not json_to_stdout:
+        print_table(report, args.verbose)
+        for problem in base_path_problems:
+            print(f"\nBASEPATH: {problem}")
 
     return 1 if (args.strict and report.failed) else 0
 

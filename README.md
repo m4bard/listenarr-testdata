@@ -61,6 +61,8 @@ TOTAL                                                     0   123
 
 The claim being tested is that this is not a *partial* failure: a correctly-tagged library in a common third-party layout is not partly discovered, it is not discovered at all. Run it against your own build and find out — that is what the repository is for.
 
+For a gate rather than a read, add `--strict` (exit non-zero on any failure) and, for machines, `--json -` or `--junit report.xml`. The JSON carries a `summary.overall` of `pass`, `fail`, or `inconclusive` — the last being a rotted source or an empty scope, so a broken *harness* never reads as a green *scan*. On a run that adds only some of the library (a perf sweep), scope the verdict with `--only-asin` so `--strict` counts only the books you actually scanned.
+
 ## Library layouts — generate one that matches your tool
 
 `--layout <name>` produces a library in a single on-disk convention, so you can mirror whatever

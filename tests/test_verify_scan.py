@@ -377,6 +377,98 @@ class TestStrictExitCode:
         assert result.returncode == 2
 
 
+class TestMachineOutput:
+    """Contract: the JSON/JUnit verdict must match reality — a broken run serializes to fail or
+    inconclusive, never a green artifact. Per the #15 category, this tests the VERDICT the machine
+    output carries, not just that the schema parses.
+    """
+
+    def _run(self, manifest_path: pathlib.Path, observed: list[dict], out: pathlib.Path,
+             *extra: str) -> subprocess.CompletedProcess:
+        observed_file = out / "observed.json"
+        observed_file.write_text(json.dumps(observed))
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "verify_scan.py"),
+             "--manifest", str(manifest_path), "--observed", str(observed_file), *extra],
+            capture_output=True, text=True,
+        )
+
+    def _linked(self, out: pathlib.Path, entries: list[dict]) -> list[dict]:
+        return [{"path": str(out / e["path"]), "asin": e["belongs_to_asin"],
+                 "title": e["true_title"]} for e in entries if e["kind"] == "book"]
+
+    def test_json_to_stdout_is_pure_parseable_json(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        out, manifest = library
+        result = self._run(out / "manifest.json", self._linked(out, manifest["entries"]),
+                           out, "--json", "-")
+        payload = json.loads(result.stdout)  # would raise if the text table leaked onto stdout
+        assert payload["summary"]["overall"] == "pass"
+
+    def test_a_broken_scan_serializes_to_fail(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        out, manifest = library
+        result = self._run(out / "manifest.json", [], out, "--json", "-", "--strict")
+        payload = json.loads(result.stdout)
+        assert payload["summary"]["overall"] == "fail"
+        assert payload["summary"]["passed"] == 0
+        assert result.returncode == 1
+
+    def test_a_correct_scan_serializes_to_pass(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        out, manifest = library
+        result = self._run(out / "manifest.json", self._linked(out, manifest["entries"]),
+                           out, "--json", "-", "--strict")
+        payload = json.loads(result.stdout)
+        assert payload["summary"]["overall"] == "pass"
+        assert payload["summary"]["failed"] == 0
+
+    def test_junit_marks_failures_for_a_broken_scan(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        out, manifest = library
+        junit = out / "out.xml"
+        self._run(out / "manifest.json", [], out, "--junit", str(junit), "--strict")
+        text = junit.read_text()
+        assert 'failures="0"' not in text  # something was marked failed
+        assert "<failure" in text
+
+    def test_junit_is_clean_for_a_correct_scan(
+        self, library: tuple[pathlib.Path, dict]
+    ) -> None:
+        out, manifest = library
+        junit = out / "out.xml"
+        self._run(out / "manifest.json", self._linked(out, manifest["entries"]),
+                  out, "--junit", str(junit))
+        text = junit.read_text()
+        assert 'failures="0"' in text
+        assert "<failure" not in text
+
+    def test_a_rotted_source_serializes_to_inconclusive(self, tmp_path: pathlib.Path) -> None:
+        # The #8 failure mode through the machine surface: a moved schema must serialize as
+        # inconclusive, NEVER a green artifact a gate could read as success.
+        out = tmp_path / "lib"
+        manifest_path = out
+        out.mkdir()
+        (out / "manifest.json").write_text(json.dumps({"scenario": "x", "expect": "y",
+                                                       "entries": []}))
+        moved = tmp_path / "moved.db"
+        connection = sqlite3.connect(moved)
+        connection.executescript("CREATE TABLE Books (Id INTEGER);")
+        connection.close()
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "verify_scan.py"),
+             "--manifest", str(out / "manifest.json"), "--db", str(moved), "--json", "-"],
+            capture_output=True, text=True,
+        )
+        payload = json.loads(result.stdout)
+        assert payload["summary"]["overall"] == "inconclusive"
+        assert result.returncode == 2
+
+
 class TestBasePath:
     def test_a_basepath_shared_by_two_books_is_reported(
         self, library: tuple[pathlib.Path, dict]

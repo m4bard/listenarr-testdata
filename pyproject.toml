@@ -47,3 +47,9 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    # A verdict/safety contract test: it asserts the tool cannot emit a FALSE verdict — fails
+    # when it should, honors its own thesis, degrades loudly. See TESTING.md. Run just these
+    # with `pytest -m contract`. Every new verdict-bearing feature should add one.
+    "contract: asserts the tool cannot emit a false verdict (see TESTING.md)",
+]

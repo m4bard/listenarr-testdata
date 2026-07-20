@@ -71,6 +71,7 @@ class TestClassification:
             diff_reports(base, head)
 
 
+@pytest.mark.contract
 class TestGate:
     """The contract: a regression can fail the gate; a clean diff cannot."""
 

@@ -89,6 +89,7 @@ class TestSqliteSource:
         assert from_sqlite(db) == []
 
 
+@pytest.mark.contract
 class TestSourceRotIsLoud:
     """Contract: a rotted source RAISES; it must never read as an honest empty result.
 
@@ -228,6 +229,7 @@ class TestCompare:
         assert not any(r.entry.get("clutter_kind") == "sidecars" for r in report.results)
 
 
+@pytest.mark.contract
 class TestWorkEquivalence:
     """Contract: a link to another valid ASIN of the same work is a PASS, not a FAIL.
 
@@ -303,6 +305,7 @@ class TestWorkEquivalence:
         assert result.verdict == "fail"
 
 
+@pytest.mark.contract
 class TestDedup:
     """Contract: editions of one work must collapse to one record. A per-file link check is blind
     to this — every file can link to the right ASIN while the library holds two entries for one
@@ -371,6 +374,7 @@ class TestDedup:
         assert payload["dedup_problems"]
 
 
+@pytest.mark.contract
 class TestStrictExitCode:
     """Contract: a broken scan must be able to make the pipeline exit non-zero.
 
@@ -446,6 +450,7 @@ class TestStrictExitCode:
         assert result.returncode == 2
 
 
+@pytest.mark.contract
 class TestMachineOutput:
     """Contract: the JSON/JUnit verdict must match reality — a broken run serializes to fail or
     inconclusive, never a green artifact. Per the #15 category, this tests the VERDICT the machine

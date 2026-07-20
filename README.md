@@ -222,9 +222,10 @@ tools/generate_library.py   the generator
 tools/verify_scan.py        expected vs observed; the rename audit; --json/--junit
 tools/conformance_diff.py   A/B two --json reports: what a branch fixed and regressed
 tests/                      the test suite
+TESTING.md                  how the suite is organised; the verdict-contract convention
 ```
 
-Requires Python 3.11+, ffmpeg and ffprobe on `PATH`, and `mutagen`. Development extras (`pip install -e '.[dev]'`) add pytest, ruff and mypy; `python -m pytest` runs the suite.
+Requires Python 3.11+, ffmpeg and ffprobe on `PATH`, and `mutagen`. Development extras (`pip install -e '.[dev]'`) add pytest, ruff and mypy; `python -m pytest` runs the suite. This is a conformance harness, so a subset of the tests are adversarial against the tool's own verdict — see [TESTING.md](TESTING.md) and `pytest -m contract`.
 
 ## Provenance and licence
 

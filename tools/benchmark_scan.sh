@@ -138,6 +138,12 @@ log INFO "library: ${FILES} files, ${SIZE}"
 
 # --- 2. start Listenarr ---------------------------------------------------------------
 "$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1 || true
+# The library is mounted READ-WRITE. Ideally a scan would only read, but this was settled
+# empirically against both images (testdata#1): on #717 the scan endpoint 500s when the library
+# root is mounted read-only and succeeds (202) when it is writable — its hardened scan path needs
+# write access to the root. canary scans fine either way. So writable is the lowest common
+# denominator that drives both. The generated library is a throwaway, so mutation costs nothing.
+# (Root-folder creation is the other version difference; see the CaseSensitivityMode note below.)
 "$RUNTIME" run -d --name "$CONTAINER" \
     -p "${PORT}:4545" \
     -e LISTENARR_LOG_LEVEL=Debug \
@@ -162,8 +168,12 @@ AUTH=(-H "X-Api-Key: ${API_KEY}" -H 'Content-Type: application/json')
 log INFO "API up, authenticated"
 
 # --- 3. register the library ----------------------------------------------------------
+# caseSensitivityMode "Sensitive": ext4/Linux is case-sensitive, and stating it makes #717 record
+# that deterministically instead of probing the filesystem. canary does not know the field and
+# ignores it (verified: it 201s and does not echo it back). One payload, both API versions — no
+# version detection needed (testdata#1).
 FOLDER_ID=$(curl -fsS -X POST "${API}/rootfolders" "${AUTH[@]}" \
-    -d '{"name":"bench","path":"/audiobooks","isDefault":true}' \
+    -d '{"name":"bench","path":"/audiobooks","isDefault":true,"caseSensitivityMode":"Sensitive"}' \
     | "$PYTHON" -c "import json,sys; print(json.load(sys.stdin)['id'])") \
     || die "could not create the root folder"
 log INFO "root folder ${FOLDER_ID} -> /audiobooks"
@@ -281,6 +291,9 @@ import json,sys
 d = json.load(sys.stdin)
 print(d.get('jobId') or d.get('id') or '')" 2>/dev/null || echo "")
 
+    # A scan that never returned a job id (e.g. the endpoint 500s) must be reported, not crash the
+    # run under `set -u` — STATUS is referenced below regardless of whether the loop ran.
+    STATUS="no-job"
     if [[ -n "$JOB" ]]; then
         STATUS="Pending"
         LAST_BEAT=0

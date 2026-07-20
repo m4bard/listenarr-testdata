@@ -135,6 +135,24 @@ The library mounts read-write, matching a real deployment (Listenarr organizes f
 roots); determinism comes from regenerating the library from a fixed `--seed`, not from an
 immutable mount.
 
+### Supported API versions
+
+The harness drives two Listenarr API shapes from one code path — current `canary` and the
+versioned API introduced by [Listenarr#717](https://github.com/Listenarrs/Listenarr/pull/717) —
+with no version detection. Two differences, both settled empirically against real images rather
+than assumed:
+
+| | canary | #717 (versioned) |
+|---|---|---|
+| route base | `/api/v1` responds | `/api/v1` responds |
+| root-folder create, read-only mount | 201 (no probe) | 400 unless `caseSensitivityMode` is sent |
+| scan, read-only mount | 202 | **500** — its hardened scan needs write access |
+
+Sending `caseSensitivityMode: "Sensitive"` on root-folder create satisfies #717 and is ignored by
+canary; mounting the library read-write satisfies #717's scan and is fine for canary. So one
+payload and one mount mode cover both — which is why this is a thin compatibility fix, not a
+version-detecting adapter.
+
 ## Why the data is trustworthy
 
 Every book is real, in the public domain, and has audio freely available from LibriVox. Every ASIN in `corpus/corpus.json` is **machine-verified against live Audible metadata** — `tools/build_corpus.py` fetches each one from [Audnex](https://api.audnex.us), checks it resolves to the book we expected, and refuses to write an entry that does not. No ASIN in this repository was ever typed by hand or taken on trust; a plausible-looking `B0XXXXXXXX` is trivial to invent and impossible to spot by eye.

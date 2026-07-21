@@ -136,6 +136,15 @@ FILES=$(find "$LIBRARY" -type f ! -name manifest.json | wc -l)
 SIZE=$(du -sh "$LIBRARY" | cut -f1)
 log INFO "library: ${FILES} files, ${SIZE}"
 
+# --- 1b. provision ffprobe ------------------------------------------------------------
+# Drop a pinned, checksum-verified ffprobe into the config dir so Listenarr finds it on boot and
+# skips its first-boot download. That download is otherwise a race: a scan tolerates ffprobe not
+# being ready yet, but an import (and metadata extraction) hard-fails during the window. Pre-placing
+# it also makes runs deterministic — the same binary every time (see tools/ffprobe_provisioner.py).
+log INFO "provisioning pinned ffprobe into the config dir"
+"$PYTHON" "${ROOT}/tools/ffprobe_provisioner.py" --config-dir "$CONFIG" >/dev/null \
+    || die "could not provision ffprobe (see tools/ffprobe_provisioner.py)"
+
 # --- 2. start Listenarr ---------------------------------------------------------------
 "$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1 || true
 # The library is mounted READ-WRITE. Ideally a scan would only read, but this was settled

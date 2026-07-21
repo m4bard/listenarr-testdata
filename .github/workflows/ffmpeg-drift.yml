@@ -1,0 +1,25 @@
+name: ffmpeg pin drift
+
+# Keep the ffprobe pin known-good. The provisioner pins a specific ffmpeg static build per arch
+# (tools/ffprobe_provisioner.py); johnvansickle serves a ROLLING "release" build, so the pinned
+# artifact will eventually be replaced upstream. This re-downloads each pin and checks its recorded
+# sha256 — a mismatch turns the run red, signalling that the build rolled and we must re-verify and
+# re-pin deliberately (never silently trust a new binary). Same pin-and-verify discipline as the
+# corpus-drift job. Needs the network, so it is a schedule/dispatch job, not part of the PR gate.
+on:
+  schedule:
+    - cron: "0 7 * * 1"   # Mondays 07:00 UTC
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify every ffprobe pin still matches its recorded sha256
+        run: python tools/ffprobe_provisioner.py --verify-pins

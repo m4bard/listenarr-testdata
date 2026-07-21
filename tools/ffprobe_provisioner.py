@@ -135,6 +135,22 @@ def _sha256_of_binary_ok(ffprobe: pathlib.Path) -> bool:
     return ffprobe.stat().st_size > 0
 
 
+def verify_pin(pin: Pin, work_dir: pathlib.Path) -> tuple[bool, str]:
+    """Re-download a pin and report whether it still matches its recorded sha256.
+
+    The drift check: johnvansickle rolls its "release" build, so a changed hash means the pin is
+    stale and must be re-recorded deliberately (rather than silently trusting a new binary).
+    Returns ``(matches, actual_sha256)``.
+    """
+    archive = work_dir / "verify.tar.xz"
+    urllib.request.urlretrieve(pin.url, archive)
+    try:
+        actual = _sha256(archive)
+        return actual == pin.sha256, actual
+    finally:
+        archive.unlink(missing_ok=True)
+
+
 def provision_config(
     config_dir: pathlib.Path, arch: str | None = None, cache_dir: pathlib.Path | None = None
 ) -> pathlib.Path:
@@ -149,11 +165,28 @@ def provision_config(
 
 if __name__ == "__main__":
     import argparse
+    import tempfile
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config-dir", type=pathlib.Path, help="provision ffprobe into this dir")
     ap.add_argument("--arch", choices=sorted(PINS), help="override arch (default: host)")
+    ap.add_argument("--verify-pins", action="store_true",
+                    help="re-download every pin and check its sha256; non-zero exit on drift")
     args = ap.parse_args()
+
+    if args.verify_pins:
+        drifted = []
+        with tempfile.TemporaryDirectory() as td:
+            for arch, pin in sorted(PINS.items()):
+                ok, actual = verify_pin(pin, pathlib.Path(td))
+                print(f"{arch}: {'OK' if ok else 'DRIFTED'}  {pin.url}")
+                print(f"    expected {pin.sha256}\n    actual   {actual}")
+                if not ok:
+                    drifted.append(arch)
+        if drifted:
+            print(f"\nPIN DRIFT: {', '.join(drifted)} rolled upstream; re-verify and re-pin.")
+        raise SystemExit(1 if drifted else 0)
+
     if args.config_dir:
         placed = provision_config(args.config_dir, args.arch)
         print(f"provisioned ffprobe -> {placed}")

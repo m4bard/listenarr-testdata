@@ -26,6 +26,7 @@ from ffprobe_provisioner import (
     host_arch,
     provision_config,
     verify_and_extract,
+    verify_pin,
 )
 
 
@@ -46,6 +47,12 @@ def _sha256(path: pathlib.Path) -> str:
     import hashlib
 
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _sha256_bytes(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
 
 
 class TestHostArch:
@@ -88,6 +95,35 @@ class TestChecksumContract:
         assert result == dest
         assert dest.read_bytes() == payload
         assert dest.stat().st_mode & stat.S_IXUSR  # extracted executable
+
+
+@pytest.mark.contract
+class TestDriftCheck:
+    """The pin must catch a rolled upstream build — verify_pin flags a hash change, offline."""
+
+    def _patch_download(self, monkeypatch: pytest.MonkeyPatch, payload: bytes) -> None:
+        def fake(url: str, dest: str) -> None:
+            pathlib.Path(dest).write_bytes(payload)
+        monkeypatch.setattr("urllib.request.urlretrieve", fake)
+
+    def test_unchanged_build_verifies(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = b"the pinned build"
+        self._patch_download(monkeypatch, payload)
+        pin = Pin(url="https://x", sha256=_sha256_bytes(payload), member="m")
+        ok, actual = verify_pin(pin, tmp_path)
+        assert ok and actual == _sha256_bytes(payload)
+
+    def test_a_rolled_build_is_flagged(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Upstream served different bytes than the pin records → drift, reported (never trusted).
+        self._patch_download(monkeypatch, b"a NEW rolled build")
+        stale = Pin(url="https://x", sha256="0" * 64, member="m")
+        ok, actual = verify_pin(stale, tmp_path)
+        assert not ok
+        assert actual != stale.sha256
 
 
 class TestProvisioning:

@@ -25,13 +25,16 @@ import pathlib
 import sys
 import tempfile
 import urllib.request
+import zipfile
 from collections.abc import Callable
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import ffmpeg_harness
 from fetch_ffprobe import FFPROBE_NAMES, ChecksumError, fetch
 
-__all__ = ["PINS", "TARGETS", "ChecksumError", "package", "record_artifact", "verify_pins"]
+__all__ = [
+    "PINS", "TARGETS", "ChecksumError", "bundle_zips", "package", "record_artifact", "verify_pins",
+]
 
 # The binaries to pull out of each source archive. ffprobe only today (Listenarr reads metadata
 # and nothing else). To also bundle ffmpeg for future re-encode support, add its names here.
@@ -142,6 +145,30 @@ def package(
     return manifest
 
 
+def bundle_zips(outdir: pathlib.Path, manifest: dict[str, object]) -> list[pathlib.Path]:
+    """Emit one ``ffprobe-<rid>.zip`` per RID under ``outdir`` (binary + manifest.json).
+
+    This is the shape a release ships: one platform-correct, pinned ffprobe per RID, packaged with
+    the manifest (archive + binary sha256) so a consumer can verify it offline. Listenarr's own
+    per-platform release build would drop the matching zip's ffprobe into each platform bundle,
+    so a native (non-Docker) install ships with a working ffprobe and never runs the first-boot
+    download at all.
+    """
+    artifacts = manifest["artifacts"]
+    assert isinstance(artifacts, list)
+    manifest_bytes = (outdir / "manifest.json").read_bytes()
+    zips: list[pathlib.Path] = []
+    for a in artifacts:
+        rid, fname = str(a["rid"]), str(a["file"])
+        binary = outdir / rid / fname
+        zpath = outdir / f"ffprobe-{rid}.zip"
+        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(binary, fname)
+            zf.writestr("manifest.json", manifest_bytes)
+        zips.append(zpath)
+    return zips
+
+
 def verify_pins(
     version: str = DEFAULT_VERSION,
     base: str = DEFAULT_BASE,
@@ -178,6 +205,8 @@ def main() -> int:
     ap.add_argument("--verify", action="store_true",
                     help="re-fetch the live release archives and check them against PINS; "
                          "prints OK/DRIFT per RID and exits non-zero on any drift")
+    ap.add_argument("--zip", action="store_true",
+                    help="also emit per-platform ffprobe-<rid>.zip bundles (binary + manifest)")
     args = ap.parse_args()
 
     if args.verify:
@@ -199,6 +228,9 @@ def main() -> int:
     for a in artifacts:
         print(f"  {a['rid']:<12} {a['file']:<12} {int(a['bytes']):>12,} B  {a['sha256']}")
     print(f"packaged {len(artifacts)} artifacts, {total:,} B total -> {args.out}/manifest.json")
+    if args.zip:
+        for z in bundle_zips(args.out, manifest):
+            print(f"  bundled {z.name} ({z.stat().st_size:,} B)")
     return 0
 
 

@@ -10,6 +10,7 @@ import hashlib
 import json
 import pathlib
 import sys
+from collections.abc import Callable
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
@@ -17,7 +18,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 from package_ffprobe import TARGETS, package, record_artifact
 
 
-def _fake_fetcher_factory(payloads: dict[str, bytes]):
+def _fake_fetcher_factory(
+    payloads: dict[str, bytes],
+) -> Callable[[str, pathlib.Path], pathlib.Path]:
     """A fetcher that writes a per-URL payload to dest, imitating download+extract offline."""
     def fetch(url: str, dest: pathlib.Path) -> pathlib.Path:
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -32,10 +35,12 @@ def test_packages_every_rid_with_its_own_hash(tmp_path: pathlib.Path) -> None:
     payloads = {t["asset"]: f"ffprobe-for-{t['rid']}".encode() for t in TARGETS}
     manifest = package(tmp_path, fetcher=_fake_fetcher_factory(payloads))
 
-    rids = {a["rid"] for a in manifest["artifacts"]}
+    artifacts = manifest["artifacts"]
+    assert isinstance(artifacts, list)
+    rids = {a["rid"] for a in artifacts}
     assert rids == {t["rid"] for t in TARGETS}
 
-    for art in manifest["artifacts"]:
+    for art in artifacts:
         placed = tmp_path / art["rid"] / art["file"]
         assert placed.exists()
         expected = hashlib.sha256(f"ffprobe-for-{art['rid']}".encode()).hexdigest()
@@ -45,7 +50,9 @@ def test_packages_every_rid_with_its_own_hash(tmp_path: pathlib.Path) -> None:
 
 def test_windows_artifact_keeps_exe_extension(tmp_path: pathlib.Path) -> None:
     manifest = package(tmp_path, fetcher=_fake_fetcher_factory({}))
-    win = next(a for a in manifest["artifacts"] if a["rid"] == "win-x64")
+    artifacts = manifest["artifacts"]
+    assert isinstance(artifacts, list)
+    win = next(a for a in artifacts if a["rid"] == "win-x64")
     assert win["file"] == "ffprobe.exe"
     assert (tmp_path / "win-x64" / "ffprobe.exe").exists()
 

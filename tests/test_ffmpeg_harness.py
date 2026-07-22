@@ -124,6 +124,18 @@ class TestMissingMember:
             verify_and_extract(archive, arc, "ffprobe.exe", dest)
         assert not dest.exists()
 
+    def test_absent_member_in_tar_also_raises_unsupported_target(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # The tar branch must match the zip branch: an absent member is a clean UnsupportedTarget,
+        # not a raw KeyError from tarfile.getmember. (Regression guard for that asymmetry.)
+        archive = _tar_xz(tmp_path, {"ffmpeg": b"only-ffmpeg"})
+        arc = Archive(url="https://ex/x.tar.xz", sha256=_sha256(archive), member="{binary}")
+        dest = tmp_path / "out" / "ffprobe"
+        with pytest.raises(UnsupportedTarget):
+            verify_and_extract(archive, arc, "ffprobe", dest)
+        assert not dest.exists()
+
 
 class TestProvisionGuards:
     def test_unsupported_target_fails_before_any_download(

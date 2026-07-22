@@ -161,9 +161,13 @@ def verify_and_extract(archive: pathlib.Path, arc: Archive, binary: str,
             dest.write_bytes(zf.read(entry))
     else:
         with tarfile.open(archive, "r:xz") as tar:
-            extracted = tar.extractfile(member)
+            try:
+                info = tar.getmember(member)
+            except KeyError:
+                raise UnsupportedTarget(f"{member} not found in {arc.url}") from None
+            extracted = tar.extractfile(info)
             if extracted is None:
-                raise UnsupportedTarget(f"{member} not found in {arc.url}")
+                raise UnsupportedTarget(f"{member} is not a regular file in {arc.url}")
             with extracted:
                 dest.write_bytes(extracted.read())
     dest.chmod(0o755)  # harmless on Windows

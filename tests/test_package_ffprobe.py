@@ -1,0 +1,67 @@
+"""package_ffprobe lays out a per-RID ffprobe artifact set + sha256 manifest.
+
+Offline: an injected fetcher stands in for the network download, writing a distinct payload per
+RID so we can prove each artifact is recorded with its own hash and size, and that the manifest
+maps every Listenarr RID to the jellyfin-ffmpeg asset it came from.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+
+from package_ffprobe import TARGETS, package, record_artifact
+
+
+def _fake_fetcher_factory(payloads: dict[str, bytes]):
+    """A fetcher that writes a per-URL payload to dest, imitating download+extract offline."""
+    def fetch(url: str, dest: pathlib.Path) -> pathlib.Path:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        # The URL is base + asset, so match by the asset it ends with.
+        payload = next((p for a, p in payloads.items() if url.endswith(a)), b"default-binary")
+        dest.write_bytes(payload)
+        return dest
+    return fetch
+
+
+def test_packages_every_rid_with_its_own_hash(tmp_path: pathlib.Path) -> None:
+    payloads = {t["asset"]: f"ffprobe-for-{t['rid']}".encode() for t in TARGETS}
+    manifest = package(tmp_path, fetcher=_fake_fetcher_factory(payloads))
+
+    rids = {a["rid"] for a in manifest["artifacts"]}
+    assert rids == {t["rid"] for t in TARGETS}
+
+    for art in manifest["artifacts"]:
+        placed = tmp_path / art["rid"] / art["file"]
+        assert placed.exists()
+        expected = hashlib.sha256(f"ffprobe-for-{art['rid']}".encode()).hexdigest()
+        assert art["sha256"] == expected
+        assert art["bytes"] == len(f"ffprobe-for-{art['rid']}".encode())
+
+
+def test_windows_artifact_keeps_exe_extension(tmp_path: pathlib.Path) -> None:
+    manifest = package(tmp_path, fetcher=_fake_fetcher_factory({}))
+    win = next(a for a in manifest["artifacts"] if a["rid"] == "win-x64")
+    assert win["file"] == "ffprobe.exe"
+    assert (tmp_path / "win-x64" / "ffprobe.exe").exists()
+
+
+def test_manifest_is_written_and_self_describing(tmp_path: pathlib.Path) -> None:
+    package(tmp_path, fetcher=_fake_fetcher_factory({}))
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert manifest["source"] == "jellyfin/jellyfin-ffmpeg"
+    assert manifest["binaries"] == ["ffprobe", "ffprobe.exe"]
+    assert len(manifest["artifacts"]) == len(TARGETS)
+
+
+def test_record_artifact_reports_hash_and_size(tmp_path: pathlib.Path) -> None:
+    binary = tmp_path / "ffprobe"
+    binary.write_bytes(b"payload-bytes")
+    rec = record_artifact(binary, "linux-x64", "portable_linux64-gpl.tar.xz")
+    assert rec["sha256"] == hashlib.sha256(b"payload-bytes").hexdigest()
+    assert rec["bytes"] == len(b"payload-bytes")
+    assert rec["rid"] == "linux-x64"

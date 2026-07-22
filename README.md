@@ -65,6 +65,26 @@ For a gate rather than a read, add `--strict` (exit non-zero on any failure) and
 
 The verdict folds in the *work-level* assertions too, not just per-file links: a `BasePath` that swallowed a sibling, and duplicate editions of one work that were not deduplicated to a single record (`dedup_problems` in the JSON). A library where every file is linked to the right ASIN can still be wrong at the work level, and `--strict` treats that as a failure rather than a footnote.
 
+## Cross-platform ffprobe validation
+
+Listenarr reads audio metadata by shelling out to one binary — `ffprobe` — exactly once per file
+(`ffprobe -v quiet -print_format json -show_format -show_streams`) and consuming a fixed set of
+fields. This repository also carries a harness for validating *that* dependency, independent of the
+library generator above.
+
+- **`tools/ffprobe_equivalence.py`** runs Listenarr's exact ffprobe command against a fixed
+  corpus covering every supported format (m4b/mp3/flac/ogg/opus/m4a/aac/wav) and compares only the
+  fields `FfprobeMetadataMapper` reads — so "does this ffprobe behave the way Listenarr needs"
+  becomes a precise, automatable check rather than a guess. Works for *any* ffprobe source.
+- **`.github/workflows/ffprobe-cross-platform.yml`** runs that check on every platform Listenarr
+  ships for — linux-x64, linux-arm64, win-x64, and osx-x64 (the last validated under Rosetta on the
+  Apple-Silicon runner, which is how Listenarr runs on Apple Silicon) — against both the current
+  source and jellyfin-ffmpeg, and reports per-platform outcomes.
+- **`tools/package_ffprobe.py`** packages just the `ffprobe` binary for each RID from a single
+  pinned source, verifying each archive against a hardcoded sha256 **before** extraction and
+  emitting a `manifest.json` that records both the archive and extracted-binary hashes. `--verify`
+  re-checks the live release against the pins to catch upstream drift.
+
 ## Library layouts — generate one that matches your tool
 
 `--layout <name>` produces a library in a single on-disk convention, so you can mirror whatever

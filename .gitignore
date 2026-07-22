@@ -10,6 +10,9 @@ __pycache__/
 *.ogg
 *.opus
 *.wav
+# ...but the cross-platform equivalence corpus is a committed, fixed test fixture (tiny,
+# deterministic inputs every runner reads) — not generated library audio, so keep it.
+!tests/fixtures/eqcorpus/*
 CLAUDE.local.md
 session-state.md
 *.egg-info/

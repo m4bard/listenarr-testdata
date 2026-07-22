@@ -125,44 +125,91 @@ def compare(baseline: str, candidate: str, files: list[pathlib.Path]) -> list[Fi
     return diffs
 
 
+def emit_views(ffprobe: str, files: list[pathlib.Path]) -> dict[str, dict[str, Any]]:
+    """The functional view a build produces for each file — the per-platform CI artifact."""
+    return {file.name: functional_view(probe(ffprobe, file)) for file in sorted(files)}
+
+
+def compare_to_golden(
+    ffprobe: str, files: list[pathlib.Path], golden: dict[str, dict[str, Any]]
+) -> list[FieldDiff]:
+    """Diff a build's functional view against a committed golden — used on platforms (macOS,
+    Windows) where there is no local baseline binary to compare against. The golden is captured
+    once from a reference build; every platform must reproduce it."""
+    diffs: list[FieldDiff] = []
+    for file in sorted(files):
+        gold = golden.get(file.name)
+        view = functional_view(probe(ffprobe, file))
+        if gold is None:
+            diffs.append(FieldDiff(file.name, "<not-in-golden>", None, "file absent from golden"))
+            continue
+        for field, value in view.items():
+            if gold.get(field) != value:
+                diffs.append(FieldDiff(file.name, field, gold.get(field), value))
+    return diffs
+
+
+def _corpus_files(corpus: pathlib.Path | None, generated: list[pathlib.Path]) -> list[pathlib.Path]:
+    if corpus:
+        return sorted(p for p in corpus.iterdir() if p.is_file())
+    return generated
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--baseline", required=True, help="path to the baseline ffprobe binary")
-    ap.add_argument("--candidate", required=True, help="path to the candidate ffprobe binary")
+    ap.add_argument("--candidate", required=True, help="path to the ffprobe binary under test")
+    ap.add_argument("--baseline", help="a second ffprobe binary to diff against (two-build mode)")
+    ap.add_argument("--golden", type=pathlib.Path,
+                    help="a committed golden JSON to diff against (no local baseline needed)")
+    ap.add_argument("--emit", type=pathlib.Path,
+                    help="write the candidate's functional view to this JSON and exit")
     ap.add_argument("--corpus", type=pathlib.Path,
-                    help="a dir of audio files to compare (default: build a per-format corpus)")
-    ap.add_argument("--keep-corpus", action="store_true", help="don't delete a generated corpus")
+                    help="a dir of audio files (default: build a per-format corpus with ffmpeg)")
     args = ap.parse_args()
 
-    for label, path in (("baseline", args.baseline), ("candidate", args.candidate)):
-        version = subprocess.run([path, "-version"], capture_output=True, text=True)
-        print(f"{label:<10} {version.stdout.splitlines()[0] if version.stdout else path}")
+    version = subprocess.run([args.candidate, "-version"], capture_output=True, text=True)
+    print(f"candidate  {version.stdout.splitlines()[0] if version.stdout else args.candidate}")
 
-    generated: pathlib.Path | None = None
-    if args.corpus:
-        files = sorted(p for p in args.corpus.iterdir() if p.is_file())
-    else:
-        generated = pathlib.Path(subprocess.run(
+    generated_dir: pathlib.Path | None = None
+    built: list[pathlib.Path] = []
+    if not args.corpus:
+        generated_dir = pathlib.Path(subprocess.run(
             ["mktemp", "-d"], capture_output=True, text=True).stdout.strip())
-        files = build_corpus(generated)
+        built = build_corpus(generated_dir)
+    files = _corpus_files(args.corpus, built)
 
-    print(f"\ncomparing the fields Listenarr reads across {len(files)} file(s):\n")
     try:
-        diffs = compare(args.baseline, args.candidate, files)
+        if args.emit:
+            views = emit_views(args.candidate, files)
+            args.emit.write_text(json.dumps(views, indent=2, sort_keys=True))
+            print(f"emitted functional view for {len(files)} file(s) -> {args.emit}")
+            return 0
+
+        formats = ", ".join(sorted({f.suffix.lstrip(".") for f in files}))
+        if args.golden:
+            golden = json.loads(args.golden.read_text())
+            diffs = compare_to_golden(args.candidate, files, golden)
+            ref = f"golden {args.golden.name}"
+        elif args.baseline:
+            bver = subprocess.run([args.baseline, "-version"], capture_output=True, text=True)
+            print(f"baseline   {bver.stdout.splitlines()[0] if bver.stdout else args.baseline}")
+            diffs = compare(args.baseline, args.candidate, files)
+            ref = "baseline"
+        else:
+            ap.error("one of --baseline, --golden, or --emit is required")
     finally:
-        if generated and not args.keep_corpus:
-            shutil.rmtree(generated, ignore_errors=True)
+        if generated_dir:
+            shutil.rmtree(generated_dir, ignore_errors=True)
 
-    formats = sorted({f.suffix.lstrip(".") for f in files})
+    print(f"\ncomparing the fields Listenarr reads across {len(files)} file(s) vs {ref}:\n")
     if not diffs:
-        print(f"EQUIVALENT: every field Listenarr reads matches across {', '.join(formats)}.")
+        print(f"EQUIVALENT: every field Listenarr reads matches across {formats}.")
         return 0
-
     print(f"DIFFERENCES in {len({d.file for d in diffs})} file(s):")
     for d in diffs:
         print(f"  {d.file}  {d.field}")
-        print(f"    baseline : {d.baseline!r}\n    candidate: {d.candidate!r}")
+        print(f"    {ref:<9}: {d.baseline!r}\n    candidate: {d.candidate!r}")
     return 1
 
 

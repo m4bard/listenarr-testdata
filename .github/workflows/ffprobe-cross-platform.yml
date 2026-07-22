@@ -1,0 +1,77 @@
+name: ffprobe cross-platform equivalence
+
+# Prove that jellyfin-ffmpeg produces the exact metadata Listenarr reads on EVERY platform it ships
+# for — not just the Linux x64 box we can test locally. Each runner fetches its platform's jellyfin
+# ffprobe and compares the fields FfprobeMetadataMapper reads (via tools/ffprobe_equivalence.py)
+# against a committed golden captured from the current source (johnvansickle 7.0.2). On the two Linux
+# targets — where the current source (johnvansickle) actually exists — it also compares the two
+# binaries directly. Green across the matrix = jellyfin-ffmpeg is a behaviour-safe replacement on
+# Linux x64/arm64, macOS Intel/Apple-Silicon, and Windows x64. On-demand (network-bound).
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash   # git-bash exists on the Windows runner too, so every step is uniform
+
+env:
+  JF_BASE: https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.4-3/jellyfin-ffmpeg_7.1.4-3_
+
+jobs:
+  equivalence:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux64
+            jf: portable_linux64-gpl.tar.xz
+            jvs: https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+            binext: ""
+          - os: ubuntu-24.04-arm
+            target: linuxarm64
+            jf: portable_linuxarm64-gpl.tar.xz
+            jvs: https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz
+            binext: ""
+          - os: macos-13
+            target: mac64
+            jf: portable_mac64-gpl.tar.xz
+            binext: ""
+          - os: macos-latest
+            target: macarm64
+            jf: portable_macarm64-gpl.tar.xz
+            binext: ""
+          - os: windows-latest
+            target: win64
+            jf: portable_win64-clang-gpl.zip
+            binext: ".exe"
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch jellyfin-ffmpeg's ffprobe for ${{ matrix.target }}
+        run: |
+          python tools/fetch_ffprobe.py \
+            --url "${JF_BASE}${{ matrix.jf }}" \
+            --out "${RUNNER_TEMP}/jellyfin${{ matrix.binext }}"
+
+      - name: jellyfin vs golden (the fields Listenarr reads)
+        run: |
+          python tools/ffprobe_equivalence.py \
+            --candidate "${RUNNER_TEMP}/jellyfin${{ matrix.binext }}" \
+            --corpus tests/fixtures/eqcorpus \
+            --golden tests/fixtures/eq-golden.json
+
+      # Where the current source exists (Linux), also diff the two real binaries directly.
+      - name: jellyfin vs johnvansickle (Linux only)
+        if: matrix.jvs != ''
+        run: |
+          python tools/fetch_ffprobe.py --url "${{ matrix.jvs }}" --out "${RUNNER_TEMP}/johnvansickle"
+          python tools/ffprobe_equivalence.py \
+            --candidate "${RUNNER_TEMP}/jellyfin" \
+            --baseline "${RUNNER_TEMP}/johnvansickle" \
+            --corpus tests/fixtures/eqcorpus

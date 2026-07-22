@@ -1,0 +1,139 @@
+{
+  "sample.aac": {
+    "format.bit_rate": "2027",
+    "format.duration": "1.065614",
+    "format.format_name": "aac",
+    "format.tags": null,
+    "stream.bit_rate": "2027",
+    "stream.channels": 1,
+    "stream.codec_name": "aac",
+    "stream.sample_rate": "22050",
+    "stream.tags": null
+  },
+  "sample.flac": {
+    "format.bit_rate": "67776",
+    "format.duration": "1.000000",
+    "format.format_name": "flac",
+    "format.tags": {
+      "album": "She",
+      "artist": "H. Rider Haggard",
+      "encoder": "Lavf61.7.100",
+      "title": "Ayesha The Return of She"
+    },
+    "stream.bit_rate": null,
+    "stream.channels": 1,
+    "stream.codec_name": "flac",
+    "stream.sample_rate": "22050",
+    "stream.tags": null
+  },
+  "sample.m4a": {
+    "format.bit_rate": "8976",
+    "format.duration": "1.000000",
+    "format.format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "format.tags": {
+      "album": "She",
+      "artist": "H. Rider Haggard",
+      "compatible_brands": "M4A isomiso2",
+      "encoder": "Lavf61.7.100",
+      "major_brand": "M4A ",
+      "minor_version": "512",
+      "title": "Ayesha The Return of She"
+    },
+    "stream.bit_rate": "833",
+    "stream.channels": 1,
+    "stream.codec_name": "aac",
+    "stream.sample_rate": "22050",
+    "stream.tags": {
+      "handler_name": "SoundHandler",
+      "language": "und",
+      "vendor_id": "[0][0][0][0]"
+    }
+  },
+  "sample.m4b": {
+    "format.bit_rate": "9136",
+    "format.duration": "1.000000",
+    "format.format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "format.tags": {
+      "album": "She",
+      "artist": "H. Rider Haggard",
+      "compatible_brands": "isomiso2mp41",
+      "encoder": "Lavf61.7.100",
+      "major_brand": "isom",
+      "minor_version": "512",
+      "title": "Ayesha The Return of She"
+    },
+    "stream.bit_rate": "833",
+    "stream.channels": 1,
+    "stream.codec_name": "aac",
+    "stream.sample_rate": "22050",
+    "stream.tags": {
+      "handler_name": "SoundHandler",
+      "language": "und",
+      "vendor_id": "[0][0][0][0]"
+    }
+  },
+  "sample.mp3": {
+    "format.bit_rate": "34277",
+    "format.duration": "1.071020",
+    "format.format_name": "mp3",
+    "format.tags": {
+      "album": "She",
+      "artist": "H. Rider Haggard",
+      "encoder": "Lavf61.7.100",
+      "title": "Ayesha The Return of She"
+    },
+    "stream.bit_rate": "32000",
+    "stream.channels": 1,
+    "stream.codec_name": "mp3",
+    "stream.sample_rate": "22050",
+    "stream.tags": null
+  },
+  "sample.ogg": {
+    "format.bit_rate": "29096",
+    "format.duration": "1.000000",
+    "format.format_name": "ogg",
+    "format.tags": null,
+    "stream.bit_rate": "40222",
+    "stream.channels": 1,
+    "stream.codec_name": "vorbis",
+    "stream.sample_rate": "22050",
+    "stream.tags": {
+      "album": "She",
+      "artist": "H. Rider Haggard",
+      "encoder": "Lavc61.19.101 libvorbis",
+      "title": "Ayesha The Return of She"
+    }
+  },
+  "sample.opus": {
+    "format.bit_rate": "3719",
+    "format.duration": "1.006500",
+    "format.format_name": "ogg",
+    "format.tags": null,
+    "stream.bit_rate": null,
+    "stream.channels": 1,
+    "stream.codec_name": "opus",
+    "stream.sample_rate": "48000",
+    "stream.tags": {
+      "album": "She",
+      "artist": "H. Rider Haggard",
+      "encoder": "Lavc61.19.101 libopus",
+      "title": "Ayesha The Return of She"
+    }
+  },
+  "sample.wav": {
+    "format.bit_rate": "354000",
+    "format.duration": "1.000000",
+    "format.format_name": "wav",
+    "format.tags": {
+      "album": "She",
+      "artist": "H. Rider Haggard",
+      "encoder": "Lavf61.7.100",
+      "title": "Ayesha The Return of She"
+    },
+    "stream.bit_rate": "352800",
+    "stream.channels": 1,
+    "stream.codec_name": "pcm_s16le",
+    "stream.sample_rate": "22050",
+    "stream.tags": null
+  }
+}

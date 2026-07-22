@@ -79,6 +79,17 @@ def test_record_artifact_reports_hash_and_size(tmp_path: pathlib.Path) -> None:
     assert rec["archive_sha256"] == "deadbeef"
 
 
+def test_empty_targets_writes_empty_manifest(tmp_path: pathlib.Path) -> None:
+    # With no targets, no per-RID dir is created; package() must still create outdir and write a
+    # manifest with an empty artifacts list rather than FileNotFoundError-ing on the write.
+    outdir = tmp_path / "out"
+    manifest = package(outdir, targets=[], fetcher=_fake_fetcher_factory({}))
+    assert manifest["artifacts"] == []
+    written = json.loads((outdir / "manifest.json").read_text())
+    assert written["artifacts"] == []
+    assert written["source"] == "jellyfin/jellyfin-ffmpeg"
+
+
 def test_wrong_pin_raises_and_writes_no_artifact(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

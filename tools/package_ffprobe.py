@@ -133,6 +133,8 @@ def package(
         "binaries": sorted(WANTED_BINARIES),
         "artifacts": artifacts,
     }
+    # With no targets no per-RID dir is created, so ensure outdir exists before the manifest write.
+    outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
 

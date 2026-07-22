@@ -28,6 +28,7 @@ import urllib.request
 from collections.abc import Callable
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import ffmpeg_harness
 from fetch_ffprobe import FFPROBE_NAMES, ChecksumError, fetch
 
 __all__ = ["PINS", "TARGETS", "ChecksumError", "package", "record_artifact", "verify_pins"]
@@ -38,36 +39,38 @@ WANTED_BINARIES = FFPROBE_NAMES
 
 # jellyfin-ffmpeg: the one org-maintained, GitHub-hosted, versioned, sha256-checksummed source
 # that covers every RID Listenarr targets. GPL-only upstream, which is license-clean for an
-# AGPL-3.0 host, so no LGPL variant is needed. Mapping is Listenarr RID -> release asset.
+# AGPL-3.0 host, so no LGPL variant is needed. The version and per-RID pins are NOT duplicated
+# here: they are the single source of truth in ffmpeg_harness.SOURCES["jellyfin"], so a re-pin
+# happens in exactly one place and the fixture-building ffmpeg and the packaged ffprobe can never
+# drift apart.
 DEFAULT_VERSION = "7.1.4-3"
 DEFAULT_BASE = (
     "https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/"
     "v{version}/jellyfin-ffmpeg_{version}_"
 )
 
-# Listenarr's shipped RIDs (from its csproj). It has no osx-arm64 RID — Apple Silicon runs the
-# osx-x64 build under Rosetta — but macarm64 is available upstream if that RID is ever added.
+_JELLYFIN = ffmpeg_harness.SOURCES["jellyfin"]
+_PREFIX = f"jellyfin-ffmpeg_{DEFAULT_VERSION}_"
+
+
+def _asset_of(url: str) -> str:
+    """The release-asset tail of a pinned jellyfin URL (what follows the versioned prefix)."""
+    return url.rsplit(_PREFIX, 1)[-1]
+
+
+# Listenarr's shipped RIDs, derived from the shared harness pins (which mirror its csproj). No
+# osx-arm64 RID — Apple Silicon runs the osx-x64 build under Rosetta.
 TARGETS = [
-    {"rid": "linux-x64", "asset": "portable_linux64-gpl.tar.xz", "binext": ""},
-    {"rid": "linux-arm64", "asset": "portable_linuxarm64-gpl.tar.xz", "binext": ""},
-    {"rid": "osx-x64", "asset": "portable_mac64-gpl.tar.xz", "binext": ""},
-    {"rid": "win-x64", "asset": "portable_win64-clang-gpl.zip", "binext": ".exe"},
+    {"rid": rid, "asset": _asset_of(arc.url), "binext": ".exe" if rid.startswith("win") else ""}
+    for rid, arc in _JELLYFIN.items()
 ]
 
-# sha256 of each release ARCHIVE (not the extracted binary), keyed by Listenarr RID. Pinning the
-# archive means the download is verified BEFORE extraction — fetch_ffprobe.fetch checks this hash
-# and raises ChecksumError without ever unpacking a tampered or rolled build. This release ships no
-# per-asset checksum sidecar (no .sha256sum assets exist), so these were captured by downloading
-# each archive once and hashing it. The --verify mode re-fetches the live archives and re-checks
-# them against these pins to catch upstream drift — the same pin-and-verify discipline the
-# provisioner and corpus use.
-# jellyfin/jellyfin-ffmpeg v7.1.4-3 archive sha256, captured 2026-07-22.
-PINS: dict[str, str] = {
-    "linux-x64": "cab9ff40a47e4232d231e4eb7e4e85fabfeec56c6905266bc94291fc0881f83f",
-    "linux-arm64": "77e4b5d044ab73e1f26c9aadaa5d6014d1782500bf2c29afb3ab81f5bea98b1f",
-    "osx-x64": "943f78e94d2760d3925fc0d9cc15f8329b11dbcdae7b0fd0d225b64e5a1aae29",
-    "win-x64": "113adeb702683c38be40a65d859f8ef7ffb07bae9df16dfb6c3df5ac3d95ef3c",
-}
+# sha256 of each release ARCHIVE (not the extracted binary), keyed by Listenarr RID, taken straight
+# from the shared harness pins. Pinning the archive means the download is verified BEFORE extraction
+# — fetch_ffprobe.fetch checks this hash and raises ChecksumError without ever unpacking a tampered
+# or rolled build. The --verify mode re-fetches the live archives and re-checks them against these
+# pins to catch upstream drift — the same pin-and-verify discipline the provisioner and corpus use.
+PINS: dict[str, str] = {rid: arc.sha256 for rid, arc in _JELLYFIN.items()}
 
 
 def _sha256(path: pathlib.Path) -> str:

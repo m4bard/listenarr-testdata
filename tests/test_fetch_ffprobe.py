@@ -19,7 +19,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-from fetch_ffprobe import ChecksumError, extract_ffprobe, fetch
+from fetch_ffprobe import ChecksumError, NoFfprobeError, extract_ffprobe, fetch
 
 
 def _tar_xz(tmp: pathlib.Path, member: str, payload: bytes) -> pathlib.Path:
@@ -61,6 +61,14 @@ def test_ignores_ffmpeg_and_finds_only_ffprobe(tmp_path: pathlib.Path) -> None:
         zf.writestr("bin/ffprobe", b"this-one")
     dest = extract_ffprobe(archive, tmp_path / "ffprobe")
     assert dest.read_bytes() == b"this-one"
+
+
+def test_an_archive_without_ffprobe_reports_it(tmp_path: pathlib.Path) -> None:
+    # Exactly Listenarr's current macOS source: an ffmpeg archive with no ffprobe. The harness must
+    # say so clearly (it's a real finding), not throw a stray StopIteration.
+    archive = _zip(tmp_path, "ffmpeg", b"only-ffmpeg-here")
+    with pytest.raises(NoFfprobeError):
+        extract_ffprobe(archive, tmp_path / "ffprobe")
 
 
 def test_sha256_mismatch_raises_and_does_not_extract(tmp_path: pathlib.Path,

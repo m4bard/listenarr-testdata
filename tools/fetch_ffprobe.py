@@ -23,6 +23,14 @@ class ChecksumError(RuntimeError):
     pass
 
 
+class NoFfprobeError(RuntimeError):
+    """The archive contained no ffprobe binary at all — the source ships something else.
+
+    This is exactly what Listenarr's current macOS source does: it points at an *ffmpeg* archive
+    with no ffprobe inside, so ffprobe is never installed. Surfacing it as a clear error (rather
+    than a stray StopIteration) lets the harness report 'this source provides no ffprobe'."""
+
+
 def _sha256(path: pathlib.Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -37,13 +45,18 @@ def extract_ffprobe(archive: pathlib.Path, dest: pathlib.Path) -> pathlib.Path:
     name = str(archive).lower()
     if name.endswith(".zip") or zipfile.is_zipfile(archive):
         with zipfile.ZipFile(archive) as zf:
-            entry = next(m for m in zf.namelist()
-                         if pathlib.PurePosixPath(m).name in FFPROBE_NAMES)
+            entry = next((m for m in zf.namelist()
+                          if pathlib.PurePosixPath(m).name in FFPROBE_NAMES), None)
+            if entry is None:
+                raise NoFfprobeError(f"no ffprobe in {archive.name} (this source ships none)")
             dest.write_bytes(zf.read(entry))
     else:
         with tarfile.open(archive) as tf:
-            info = next(m for m in tf.getmembers()
-                        if m.isfile() and pathlib.PurePosixPath(m.name).name in FFPROBE_NAMES)
+            info = next((m for m in tf.getmembers()
+                         if m.isfile()
+                         and pathlib.PurePosixPath(m.name).name in FFPROBE_NAMES), None)
+            if info is None:
+                raise NoFfprobeError(f"no ffprobe in {archive.name} (this source ships none)")
             extracted = tf.extractfile(info)
             if extracted is None:
                 raise RuntimeError(f"could not read {info.name} from {archive}")

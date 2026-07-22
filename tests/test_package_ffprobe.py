@@ -17,7 +17,16 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-from package_ffprobe import PINS, TARGETS, ChecksumError, package, record_artifact
+import zipfile
+
+from package_ffprobe import (
+    PINS,
+    TARGETS,
+    ChecksumError,
+    bundle_zips,
+    package,
+    record_artifact,
+)
 
 
 def _fake_fetcher_factory(
@@ -31,6 +40,27 @@ def _fake_fetcher_factory(
         dest.write_bytes(payload)
         return dest
     return fetch
+
+
+def test_bundle_zips_carry_the_binary_and_manifest(tmp_path: pathlib.Path) -> None:
+    payloads = {t["asset"]: f"ffprobe-for-{t['rid']}".encode() for t in TARGETS}
+    manifest = package(tmp_path, fetcher=_fake_fetcher_factory(payloads))
+
+    zips = bundle_zips(tmp_path, manifest)
+    assert {z.name for z in zips} == {f"ffprobe-{t['rid']}.zip" for t in TARGETS}
+
+    # The Windows bundle must carry ffprobe.exe (not ffprobe) plus the verifiable manifest.
+    win = tmp_path / "ffprobe-win-x64.zip"
+    with zipfile.ZipFile(win) as zf:
+        names = set(zf.namelist())
+        assert names == {"ffprobe.exe", "manifest.json"}
+        assert zf.read("ffprobe.exe") == b"ffprobe-for-win-x64"
+        assert json.loads(zf.read("manifest.json"))["source"] == "jellyfin/jellyfin-ffmpeg"
+
+    # A non-Windows bundle carries the extensionless binary.
+    lin = tmp_path / "ffprobe-linux-x64.zip"
+    with zipfile.ZipFile(lin) as zf:
+        assert "ffprobe" in zf.namelist()
 
 
 def test_packages_every_rid_with_its_own_hash(tmp_path: pathlib.Path) -> None:

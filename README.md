@@ -65,6 +65,43 @@ For a gate rather than a read, add `--strict` (exit non-zero on any failure) and
 
 The verdict folds in the *work-level* assertions too, not just per-file links: a `BasePath` that swallowed a sibling, and duplicate editions of one work that were not deduplicated to a single record (`dedup_problems` in the JSON). A library where every file is linked to the right ASIN can still be wrong at the work level, and `--strict` treats that as a failure rather than a footnote.
 
+## Cross-platform ffprobe validation
+
+Listenarr reads audio metadata by shelling out to one binary — `ffprobe` — exactly once per file
+(`ffprobe -v quiet -print_format json -show_format -show_streams`) and consuming a fixed set of
+fields. This repository carries a harness for validating and provisioning *that* dependency,
+independent of the library generator above.
+
+At its core is **one** provisioning harness, **`tools/ffmpeg_harness.py`**, that everything else
+builds on. It is source-agnostic (`johnvansickle` — Listenarr's current Linux-only source — or
+`jellyfin`, the one org-maintained source covering every platform Listenarr ships) and
+binary-agnostic (`ffmpeg` to *create* fixture audio, or `ffprobe` to *read* metadata — both ride in
+a single pinned archive). It verifies each archive against a recorded sha256 **before** extraction,
+so a rolled or tampered build raises and never unpacks, and caches the extracted binary. This repo
+dogfoods it both ways: the generator pulls **ffmpeg** through it to synthesize fixtures, and it
+provisions **ffprobe** for Listenarr. Crucially, dropping a pinned, verified ffprobe at
+`<config>/ffmpeg/ffprobe` is *exactly* what Listenarr's Docker entrypoint would do before boot — so
+the same script is the proposed deployment path, no C# port required.
+
+- **`tools/ffmpeg_harness.py`** — the shared provisioner described above. `--verify` re-downloads a
+  source's pins and re-checks their sha256 to catch upstream drift (johnvansickle rolls its
+  "release" build by design; jellyfin assets are immutable per tag).
+- **`tools/ffprobe_provisioner.py`** — a thin wrapper that provisions ffprobe via the harness and
+  drops it at `<config>/ffmpeg/ffprobe`, so Listenarr finds it (`File.Exists`) and skips its own
+  unpinned first-boot download — removing both the download race and the run-to-run non-determinism.
+- **`tools/ffprobe_equivalence.py`** runs Listenarr's exact ffprobe command against a fixed
+  corpus covering every supported format (m4b/mp3/flac/ogg/opus/m4a/aac/wav) and compares only the
+  fields `FfprobeMetadataMapper` reads — so "does this ffprobe behave the way Listenarr needs"
+  becomes a precise, automatable check rather than a guess. Works for *any* ffprobe source.
+- **`.github/workflows/ffprobe-cross-platform.yml`** runs that check on every platform Listenarr
+  ships for — linux-x64, linux-arm64, win-x64, and osx-x64 (the last validated under Rosetta on the
+  Apple-Silicon runner, which is how Listenarr runs on Apple Silicon) — against both the current
+  source and jellyfin-ffmpeg, and reports per-platform outcomes.
+- **`tools/package_ffprobe.py`** packages just the `ffprobe` binary for each RID from the harness's
+  pins, verifying each archive against its sha256 **before** extraction and emitting a
+  `manifest.json` that records both the archive and extracted-binary hashes. `--verify` re-checks the
+  live release against the pins to catch upstream drift.
+
 ## Library layouts — generate one that matches your tool
 
 `--layout <name>` produces a library in a single on-disk convention, so you can mirror whatever

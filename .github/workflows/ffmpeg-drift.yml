@@ -22,4 +22,6 @@ jobs:
           python-version: "3.12"
 
       - name: Verify every ffprobe pin still matches its recorded sha256
-        run: python tools/ffprobe_provisioner.py --verify-pins
+        # johnvansickle serves the ROLLING "release" build, so it is the source whose pins actually
+        # drift; check it explicitly (the provisioner now defaults to the immutable jellyfin source).
+        run: python tools/ffprobe_provisioner.py --verify-pins --source johnvansickle

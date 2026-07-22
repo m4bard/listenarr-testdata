@@ -77,7 +77,7 @@ def build_corpus(out_dir: pathlib.Path) -> list[pathlib.Path]:
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono", "-t", "1",
                *codec_args, *TAGS, str(dest)]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
         if result.returncode == 0 and dest.exists():
             files.append(dest)
         else:
@@ -87,8 +87,10 @@ def build_corpus(out_dir: pathlib.Path) -> list[pathlib.Path]:
 
 
 def probe(ffprobe: str, file: pathlib.Path) -> dict[str, Any]:
+    # ffprobe emits UTF-8 JSON; pin the decode so a Windows runner's cp1252 locale can't corrupt
+    # non-ASCII tag values into false diffs.
     result = subprocess.run([ffprobe, *LISTENARR_ARGS, str(file)],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, encoding="utf-8")
     if result.returncode != 0:
         raise ffprobeError(f"{ffprobe} failed on {file.name}: {result.stderr.strip()[:120]}")
     parsed: dict[str, Any] = json.loads(result.stdout or "{}")

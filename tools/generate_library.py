@@ -519,9 +519,10 @@ class SilenceFactory:
         "mp3": ("libmp3lame", "mp3"), "flac": ("flac", "flac"),
     }
 
-    def __init__(self, cache: pathlib.Path) -> None:
+    def __init__(self, cache: pathlib.Path, ffmpeg: str = "ffmpeg") -> None:
         self.cache = cache
         self.cache.mkdir(parents=True, exist_ok=True)
+        self.ffmpeg = ffmpeg  # argv[0]: a PATH name ("ffmpeg") or a provisioned binary path
         self._made: dict[str, pathlib.Path] = {}
 
     def base(self, ext: str) -> pathlib.Path:
@@ -530,7 +531,7 @@ class SilenceFactory:
         codec, container = self.CODECS[ext]
         out = self.cache / f"silence.{ext}"
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
             "-fflags", "+bitexact",
             "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono",
             "-t", "1", "-c:a", codec, "-flags:a", "+bitexact",
@@ -882,6 +883,7 @@ def generate(
     layout_override: str | None = None,
     only_asins: list[str] | None = None,
     only_tags: list[str] | None = None,
+    ffmpeg: str = "ffmpeg",
 ) -> dict[str, Any]:
     """Generate the library for one scenario and return its manifest.
 
@@ -892,6 +894,9 @@ def generate(
     only_asins / only_tags narrow the corpus to specific books (by ASIN) or to books
     carrying any of the given failure-mode tags, so a reported bug becomes a minimal
     two- or three-book repro rather than a whole scenario.
+
+    ffmpeg is the binary used to synthesize the silent audio: a PATH name ("ffmpeg",
+    the offline default the tests use) or a path provisioned by ffmpeg_harness.
     """
     rng = random.Random(seed)
     corpus = load_corpus()
@@ -902,7 +907,7 @@ def generate(
         raise ValueError("no corpus books match the given --only-asin / --tag filters")
 
     out.mkdir(parents=True, exist_ok=True)
-    silence = SilenceFactory(out / ".silence-cache")
+    silence = SilenceFactory(out / ".silence-cache", ffmpeg=ffmpeg)
 
     layout_keys = [layout_override] if layout_override else list(scenario.layouts)
     layouts = [cases.LAYOUTS_BY_KEY[k] for k in layout_keys]
@@ -1090,6 +1095,12 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="list the scenarios and exit")
     ap.add_argument("--list-layouts", action="store_true", help="list the layouts and exit")
     ap.add_argument("--force", action="store_true", help="overwrite a non-empty --out")
+    ap.add_argument("--ffmpeg-source", choices=("jellyfin", "johnvansickle", "system"),
+                    default="jellyfin",
+                    help="where to get ffmpeg for synthesizing audio: 'jellyfin' or "
+                         "'johnvansickle' provision a pinned, sha256-verified binary via "
+                         "ffmpeg_harness (full dogfood); 'system' uses ffmpeg from PATH "
+                         "(no download — the fast dev/CI path). Default: jellyfin.")
     args = ap.parse_args()
 
     if args.list:
@@ -1134,8 +1145,17 @@ def main() -> int:
             ap.error(f"{args.out} exists and is not empty; pass --force to overwrite")
         shutil.rmtree(args.out)
 
+    # Resolve ffmpeg: 'system' is a bare PATH lookup (offline); the harness sources download a
+    # pinned, verified binary once and cache it — the same provisioning path Listenarr would run.
+    if args.ffmpeg_source == "system":
+        ffmpeg = "ffmpeg"
+    else:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import ffmpeg_harness
+        ffmpeg = str(ffmpeg_harness.provision("ffmpeg", source=args.ffmpeg_source))
+
     manifest = generate(scenario, args.out, args.seed, args.limit, layout_key,
-                        only_asins=only_asins, only_tags=only_tags)
+                        only_asins=only_asins, only_tags=only_tags, ffmpeg=ffmpeg)
     print(f"scenario   {manifest['scenario']}")
     print(f"seed       {manifest['seed']}")
     print(f"books      {manifest['corpus_books']}")

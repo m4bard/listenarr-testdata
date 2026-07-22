@@ -6,6 +6,7 @@ that a sha256 mismatch raises rather than extracting an unverified binary.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import lzma
 import pathlib
@@ -83,3 +84,35 @@ def test_sha256_mismatch_raises_and_does_not_extract(tmp_path: pathlib.Path,
     with pytest.raises(ChecksumError):
         fetch("https://example/x.tar.xz", out, sha256="0" * 64)
     assert not out.exists()
+
+
+def test_matching_sha256_verifies_and_extracts(tmp_path: pathlib.Path,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    # The positive path: a correct sha256 passes verification and the binary is extracted.
+    archive = _tar_xz(tmp_path, "pkg/ffprobe", b"verified-payload")
+    good_sha = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    def fake_urlretrieve(url: str, dest: str) -> None:
+        pathlib.Path(dest).write_bytes(archive.read_bytes())
+    monkeypatch.setattr("urllib.request.urlretrieve", fake_urlretrieve)
+
+    out = tmp_path / "out" / "ffprobe"
+    dest = fetch("https://example/x.tar.xz", out, sha256=good_sha)
+    assert dest == out
+    assert out.read_bytes() == b"verified-payload"
+
+
+def test_corrupt_tarball_raises_readerror(tmp_path: pathlib.Path) -> None:
+    # A truncated/garbage tar must fail cleanly as a tarfile.ReadError, not a stray error.
+    archive = tmp_path / "build.tar.xz"
+    archive.write_bytes(b"this is not a valid tar.xz archive at all")
+    with pytest.raises(tarfile.ReadError):
+        extract_ffprobe(archive, tmp_path / "out" / "ffprobe")
+
+
+def test_corrupt_zip_raises_badzipfile(tmp_path: pathlib.Path) -> None:
+    # A corrupt .zip must fail cleanly as a zipfile.BadZipFile.
+    archive = tmp_path / "build.zip"
+    archive.write_bytes(b"PK\x03\x04 but the rest is garbage, not a real zip")
+    with pytest.raises(zipfile.BadZipFile):
+        extract_ffprobe(archive, tmp_path / "out" / "ffprobe.exe")

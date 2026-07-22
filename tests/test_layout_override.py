@@ -33,8 +33,11 @@ def book_layouts(manifest: dict) -> set[str]:
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess:
+    # --ffmpeg-source system keeps the CLI offline (PATH ffmpeg); main() defaults to jellyfin,
+    # which would download a pinned build, so the tests pin it to the no-download path explicitly.
     return subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "generate_library.py"), *args],
+        [sys.executable, str(ROOT / "tools" / "generate_library.py"),
+         "--ffmpeg-source", "system", *args],
         capture_output=True, text=True,
     )
 

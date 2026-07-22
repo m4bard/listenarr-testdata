@@ -1,48 +1,58 @@
-name: ffprobe cross-platform equivalence
+name: ffprobe source validation
 
-# Prove that jellyfin-ffmpeg produces the exact metadata Listenarr reads on EVERY platform it ships
-# for — not just the Linux x64 box we can test locally. Each runner fetches its platform's jellyfin
-# ffprobe and compares the fields FfprobeMetadataMapper reads (via tools/ffprobe_equivalence.py)
-# against a committed golden captured from the current source (johnvansickle 7.0.2). On the two Linux
-# targets — where the current source (johnvansickle) actually exists — it also compares the two
-# binaries directly. Green across the matrix = jellyfin-ffmpeg is a behaviour-safe replacement on
-# Linux x64/arm64, macOS Intel/Apple-Silicon, and Windows x64. On-demand (network-bound).
+# A cross-platform QA harness for Listenarr's ffprobe dependency — useful no matter which source is
+# shipped. On every platform Listenarr targets, it validates that a given ffprobe produces the exact
+# metadata FfprobeMetadataMapper reads (tools/ffprobe_equivalence.py --golden, against a golden
+# captured from the current source). Each job checks BOTH:
+#   * the CURRENT source (johnvansickle on Linux, evermeet on macOS, gyan on Windows) — informational,
+#     so it surfaces where the status quo falls short (notably: the macOS source ships no ffprobe), and
+#   * jellyfin-ffmpeg — the gate. Green jellyfin across the matrix = a behaviour-safe, consistent
+#     replacement on Linux x64/arm64, macOS Intel/Apple-Silicon, and Windows x64.
+# The per-platform current-vs-jellyfin outcomes land in the run summary. On-demand (network-bound).
 on:
   workflow_dispatch:
 
 defaults:
   run:
-    shell: bash   # git-bash exists on the Windows runner too, so every step is uniform
+    shell: bash   # git-bash exists on the Windows runner, so every step is uniform
 
 env:
   JF_BASE: https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.4-3/jellyfin-ffmpeg_7.1.4-3_
 
 jobs:
-  equivalence:
+  validate:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: linux64
+            current_name: johnvansickle
+            current_url: https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
             jf: portable_linux64-gpl.tar.xz
-            jvs: https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
             binext: ""
           - os: ubuntu-24.04-arm
             target: linuxarm64
+            current_name: johnvansickle
+            current_url: https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz
             jf: portable_linuxarm64-gpl.tar.xz
-            jvs: https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz
             binext: ""
           - os: macos-13
             target: mac64
+            current_name: evermeet
+            current_url: https://evermeet.cx/ffmpeg/ffmpeg-6.0.zip
             jf: portable_mac64-gpl.tar.xz
             binext: ""
           - os: macos-latest
             target: macarm64
+            current_name: evermeet
+            current_url: https://evermeet.cx/ffmpeg/ffmpeg-6.0.zip
             jf: portable_macarm64-gpl.tar.xz
             binext: ""
           - os: windows-latest
             target: win64
+            current_name: gyan
+            current_url: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
             jf: portable_win64-clang-gpl.zip
             binext: ".exe"
     runs-on: ${{ matrix.os }}
@@ -53,25 +63,30 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Fetch jellyfin-ffmpeg's ffprobe for ${{ matrix.target }}
+      # The CURRENT source: informational (continue-on-error). A broken source — e.g. macOS shipping
+      # no ffprobe — is a finding to report, not a reason to fail the harness.
+      - name: Validate CURRENT source (${{ matrix.current_name }})
+        id: current
+        continue-on-error: true
         run: |
-          python tools/fetch_ffprobe.py \
-            --url "${JF_BASE}${{ matrix.jf }}" \
-            --out "${RUNNER_TEMP}/jellyfin${{ matrix.binext }}"
+          python tools/fetch_ffprobe.py --url "${{ matrix.current_url }}" \
+            --out "${RUNNER_TEMP}/current${{ matrix.binext }}"
+          python tools/ffprobe_equivalence.py \
+            --candidate "${RUNNER_TEMP}/current${{ matrix.binext }}" \
+            --corpus tests/fixtures/eqcorpus --golden tests/fixtures/eq-golden.json
 
-      - name: jellyfin vs golden (the fields Listenarr reads)
+      # jellyfin-ffmpeg: the gate. This is the replacement we're validating.
+      - name: Validate jellyfin-ffmpeg
+        id: jellyfin
         run: |
+          python tools/fetch_ffprobe.py --url "${JF_BASE}${{ matrix.jf }}" \
+            --out "${RUNNER_TEMP}/jellyfin${{ matrix.binext }}"
           python tools/ffprobe_equivalence.py \
             --candidate "${RUNNER_TEMP}/jellyfin${{ matrix.binext }}" \
-            --corpus tests/fixtures/eqcorpus \
-            --golden tests/fixtures/eq-golden.json
+            --corpus tests/fixtures/eqcorpus --golden tests/fixtures/eq-golden.json
 
-      # Where the current source exists (Linux), also diff the two real binaries directly.
-      - name: jellyfin vs johnvansickle (Linux only)
-        if: matrix.jvs != ''
+      - name: Record per-platform outcome
+        if: always()
         run: |
-          python tools/fetch_ffprobe.py --url "${{ matrix.jvs }}" --out "${RUNNER_TEMP}/johnvansickle"
-          python tools/ffprobe_equivalence.py \
-            --candidate "${RUNNER_TEMP}/jellyfin" \
-            --baseline "${RUNNER_TEMP}/johnvansickle" \
-            --corpus tests/fixtures/eqcorpus
+          echo "| ${{ matrix.target }} | ${{ matrix.current_name }}: ${{ steps.current.outcome }} | jellyfin: ${{ steps.jellyfin.outcome }} |" \
+            >> "${GITHUB_STEP_SUMMARY}"

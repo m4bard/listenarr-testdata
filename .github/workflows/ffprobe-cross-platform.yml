@@ -7,7 +7,11 @@ name: ffprobe source validation
 #   * the CURRENT source (johnvansickle on Linux, evermeet on macOS, gyan on Windows) — informational,
 #     so it surfaces where the status quo falls short (notably: the macOS source ships no ffprobe), and
 #   * jellyfin-ffmpeg — the gate. Green jellyfin across the matrix = a behaviour-safe, consistent
-#     replacement on Linux x64/arm64, macOS Intel/Apple-Silicon, and Windows x64.
+#     replacement on Linux x64/arm64, macOS (osx-x64), and Windows x64.
+# macOS note: Listenarr ships osx-x64 only, so that is the binary that matters. GitHub's Intel macOS
+# runners are scarce (the job never allocated one), so the osx-x64 build is validated under Rosetta on
+# the Apple-Silicon runner — which is exactly how Listenarr runs on Apple-Silicon Macs, and the same
+# binary runs natively on Intel. See the mac64-rosetta matrix entry for the documented gap.
 # The per-platform current-vs-jellyfin outcomes land in the run summary. On-demand (network-bound).
 on:
   workflow_dispatch:
@@ -37,8 +41,17 @@ jobs:
             current_url: https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz
             jf: portable_linuxarm64-gpl.tar.xz
             binext: ""
-          - os: macos-13
-            target: mac64
+          # osx-x64 is the ONLY macOS RID Listenarr ships. GitHub's Intel macOS runners (macos-13)
+          # are scarce and this job repeatedly failed to be allocated one, so we validate the osx-x64
+          # (mac64) build under Rosetta on the Apple-Silicon runner instead. This is not a bench
+          # trick: it is exactly how Listenarr runs on Apple-Silicon Macs (the osx-x64 binary under
+          # Rosetta), and the identical binary runs natively on Intel Macs — so this cell directly
+          # covers the Apple-Silicon path and is a close proxy for Intel. Documented gap, revisit if
+          # (a) Listenarr drops osx-x64, (b) GitHub provides Intel macOS runners again, or (c) Rosetta
+          # is ever shown to alter ffprobe's output. See run summary + README.
+          - os: macos-latest
+            target: mac64-rosetta
+            rosetta: true
             current_name: evermeet
             current_url: https://evermeet.cx/ffmpeg/ffmpeg-6.0.zip
             jf: portable_mac64-gpl.tar.xz
@@ -62,6 +75,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # Apple-Silicon runner validating the osx-x64 build: make sure Rosetta 2 is present so the
+      # x86_64 ffprobe executes. GitHub's arm64 macOS images ship it, so this is usually a no-op.
+      - name: Ensure Rosetta 2 (osx-x64 under Rosetta)
+        if: matrix.rosetta
+        run: softwareupdate --install-rosetta --agree-to-license || true
 
       # The CURRENT source: informational (continue-on-error). A broken source — e.g. macOS shipping
       # no ffprobe — is a finding to report, not a reason to fail the harness.

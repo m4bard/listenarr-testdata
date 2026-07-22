@@ -82,6 +82,32 @@ class TestEquivalenceContract:
         assert eq.compare("A", "B", [pathlib.Path("s.m4b")]) == []
 
 
+@pytest.mark.contract
+class TestGoldenMode:
+    """The mode macOS/Windows runners use: compare a build against a committed golden, no local
+    baseline binary. Must flag a change in a read field and stay quiet when it reproduces golden."""
+
+    def test_reproducing_golden_is_clean(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        view = {"format.duration": "1.0", "stream.codec_name": "aac"}
+        monkeypatch.setattr(eq, "probe", lambda ff, f: {})
+        monkeypatch.setattr(eq, "functional_view", lambda j: view)
+        golden = {"s.m4b": view}
+        assert eq.compare_to_golden("X", [pathlib.Path("s.m4b")], golden) == []
+
+    def test_a_deviation_from_golden_is_flagged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(eq, "probe", lambda ff, f: {})
+        monkeypatch.setattr(eq, "functional_view", lambda j: {"stream.codec_name": "mp3"})
+        golden = {"s.m4b": {"stream.codec_name": "aac"}}
+        diffs = eq.compare_to_golden("X", [pathlib.Path("s.m4b")], golden)
+        assert len(diffs) == 1 and diffs[0].field == "stream.codec_name"
+
+    def test_emit_produces_a_view_per_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(eq, "probe", lambda ff, f: {})
+        monkeypatch.setattr(eq, "functional_view", lambda j: {"format.duration": "1.0"})
+        views = eq.emit_views("X", [pathlib.Path("a.m4b"), pathlib.Path("b.mp3")])
+        assert set(views) == {"a.m4b", "b.mp3"}
+
+
 def json_copy(obj: dict) -> dict:
     import json
     copied: dict = json.loads(json.dumps(obj))

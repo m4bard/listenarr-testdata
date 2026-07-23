@@ -1,5 +1,5 @@
 """ffmpeg_harness: the shared, source- and binary-agnostic provisioner both ffprobe_provisioner and
-package_ffprobe now delegate to.
+package_ffbinary now delegate to.
 
 The load-bearing property is the safety contract: an archive whose sha256 does not match its pin is
 REFUSED and nothing is written. Around that, these tests exercise every real branch of member

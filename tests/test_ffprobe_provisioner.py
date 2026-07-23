@@ -1,4 +1,4 @@
-"""The ffprobe provisioner: a thin wrapper that drops a pinned, verified binary before boot.
+"""The ffprobe provisioner: a thin wrapper that drops a pinned, verified ffprobe for the benchmark.
 
 Since the refactor the provisioner delegates all downloading, pinning and the sha256-before-extract
 safety contract to ``ffmpeg_harness`` (covered by test_ffmpeg_harness.py). What remains to test here

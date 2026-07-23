@@ -79,9 +79,9 @@ binary-agnostic (`ffmpeg` to *create* fixture audio, or `ffprobe` to *read* meta
 a single pinned archive). It verifies each archive against a recorded sha256 **before** extraction,
 so a rolled or tampered build raises and never unpacks, and caches the extracted binary. This repo
 dogfoods it both ways: the generator pulls **ffmpeg** through it to synthesize fixtures, and it
-provisions **ffprobe** for Listenarr. Crucially, dropping a pinned, verified ffprobe at
-`<config>/ffmpeg/ffprobe` is *exactly* what Listenarr's Docker entrypoint would do before boot — so
-the same script is the proposed deployment path, no C# port required.
+provisions **ffprobe** into the config of the Listenarr container the benchmark runs against — so
+that container finds it (`File.Exists`) and skips its own unpinned first-boot download, keeping the
+benchmark deterministic and race-free.
 
 - **`tools/ffmpeg_harness.py`** — the shared provisioner described above. `--verify` re-downloads a
   source's pins and re-checks their sha256 to catch upstream drift (johnvansickle rolls its
@@ -105,11 +105,10 @@ the same script is the proposed deployment path, no C# port required.
   ships.
 - **`.github/workflows/release.yml`** cuts a SemVer release of this repo's own binary — the pinned,
   verified **ffmpeg** it uses to synthesize fixtures: push a tag `vX.Y.Z` and it attaches
-  `ffmpeg-<rid>.zip` for every RID plus `manifest.json` as release assets. (ffprobe, Listenarr's
-  binary, isn't published here — that's produced on demand by `package_ffbinary.py --program ffprobe`
-  for Listenarr's *own* build to bake a working ffprobe into its per-platform artifacts, so it never
-  fetches one unpinned on first boot.) `workflow_dispatch` builds the bundles as run artifacts without
-  publishing, for a dry run.
+  `ffmpeg-<rid>.zip` for every RID plus `manifest.json` as release assets. (ffprobe isn't published
+  here — this repo only uses it to provision the Listenarr container it benchmarks;
+  `package_ffbinary.py --program ffprobe` can emit ffprobe bundles on demand for anyone who wants
+  them.) `workflow_dispatch` builds the bundles as run artifacts without publishing, for a dry run.
 
 ## Library layouts — generate one that matches your tool
 

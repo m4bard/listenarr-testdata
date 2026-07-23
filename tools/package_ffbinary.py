@@ -145,9 +145,8 @@ def bundle_zips(outdir: pathlib.Path, manifest: dict[str, object]) -> list[pathl
     """Emit one ``<program>-<rid>.zip`` per RID under ``outdir`` (binary + manifest.json).
 
     This is the shape a release ships: one platform-correct, pinned binary per RID, packaged with
-    the manifest (archive + binary sha256) so a consumer can verify it offline. Listenarr's own
-    per-platform release build would drop the matching zip's ffprobe into each platform bundle, so
-    a native (non-Docker) install ships a working ffprobe and never runs the first-boot download.
+    the manifest (archive + binary sha256) so a consumer can verify it offline and drop the binary
+    wherever a pinned, pre-verified copy is wanted.
     """
     program = str(manifest["program"])
     artifacts = manifest["artifacts"]

@@ -1146,7 +1146,7 @@ def main() -> int:
         shutil.rmtree(args.out)
 
     # Resolve ffmpeg: 'system' is a bare PATH lookup (offline); the harness sources download a
-    # pinned, verified binary once and cache it — the same provisioning path Listenarr would run.
+    # pinned, verified binary once and cache it.
     if args.ffmpeg_source == "system":
         ffmpeg = "ffmpeg"
     else:

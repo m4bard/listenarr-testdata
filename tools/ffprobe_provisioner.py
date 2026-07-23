@@ -11,15 +11,14 @@ checksum). Two consequences bite a test harness:
   * non-determinism — the exact ffprobe binary varies run to run.
 
 Dropping a known-good ffprobe at ``<config>/ffmpeg/ffprobe`` up front makes the app find it
-(``File.Exists``) and skip the download entirely: no race, and the same binary every run. Dropping
-a pinned, verified ffprobe at that exact path is precisely what Listenarr's Docker entrypoint would
-do to provision the binary before boot — this module is that entrypoint step, in Python.
+(``File.Exists``) and skip the download entirely: no race, and the same binary every run — which is
+what the benchmark needs to be reproducible.
 
 This is now a thin wrapper over the shared provisioning harness (``ffmpeg_harness``): the pins,
 the sha256-before-extraction safety contract and the drift check all live there, so ffprobe and the
 fixture-building ffmpeg come from one source of truth. The source is selectable — ``jellyfin`` (the
-one org-maintained source covering every platform Listenarr ships, the path this harness
-demonstrates) by default, or ``johnvansickle`` (Listenarr's current Linux-only source) via
+one org-maintained source covering every platform Listenarr ships) by default, or ``johnvansickle``
+(Listenarr's current Linux-only source) via
 ``--source``. The ``ffmpeg-drift`` workflow re-verifies the pins the same way.
 """
 from __future__ import annotations

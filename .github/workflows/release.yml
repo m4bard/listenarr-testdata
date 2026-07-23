@@ -5,10 +5,10 @@ name: release
 # trigger; the release attaches `ffmpeg-<rid>.zip` for every RID (linux-x64, linux-arm64, osx-x64,
 # win-x64) plus `manifest.json` (archive + extracted-binary sha256s).
 #
-# ffprobe (Listenarr's only ff-binary) is NOT published here — that one is produced on demand by the
-# same tool (`package_ffbinary.py --program ffprobe`) for Listenarr's own build to bake into its
-# per-platform artifacts. It's Listenarr's binary, so it's a tool Listenarr runs, not a release this
-# repo hosts.
+# ffprobe is not published here: this repo only uses ffprobe to provision the Listenarr container it
+# benchmarks (tools/ffprobe_provisioner.py), whereas ffmpeg is the binary the generator itself runs.
+# package_ffbinary can still emit ffprobe bundles on demand (--program ffprobe) for anyone who wants
+# them.
 #
 # `workflow_dispatch` is a dry run: it builds and uploads the bundles as run artifacts without
 # publishing a release, so the packaging can be exercised without cutting a tag.

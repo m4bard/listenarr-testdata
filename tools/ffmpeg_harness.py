@@ -17,10 +17,10 @@ parameterized two ways:
     ship both binaries inside a *single* archive, so one pinned, checksum-verified download serves
     either — you just extract a different member.
 
-This is deployment/provisioning tooling, not app code: listenarr-testdata runs it to pull ffmpeg,
-and Listenarr can run the *same script* from its Docker entrypoint to drop a pinned, verified
-ffprobe into ``<config>/ffmpeg/ffprobe`` before the app starts (the app then finds it and skips its
-own unpinned download). No C# port required.
+listenarr-testdata runs it two ways: the generator pulls ffmpeg through it to synthesize fixture
+audio, and ffprobe_provisioner uses it to drop a pinned, verified ffprobe into the config of the
+Listenarr container the benchmark runs against — so that container finds it (``File.Exists``) and
+skips its own unpinned first-boot download, keeping the benchmark deterministic and race-free.
 
 Safety contract (the whole point of pinning): the archive is verified against a recorded sha256
 **before** extraction — a mismatch RAISES and never extracts an unverified binary. ``verify_source``

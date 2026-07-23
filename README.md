@@ -103,12 +103,13 @@ the same script is the proposed deployment path, no C# port required.
   extracted-binary hashes. `--verify` re-checks the live release against the pins to catch upstream
   drift; `--zip` emits a per-platform `<program>-<rid>.zip` (binary + manifest) — the shape a release
   ships.
-- **`.github/workflows/release.yml`** cuts a SemVer release from those bundles: push a tag `vX.Y.Z`
-  and it attaches `ffprobe-<rid>.zip` for every RID plus `manifest.json` as release assets. This is
-  the reference for baking a platform-correct, pinned ffprobe into a release artifact — what
-  Listenarr's own per-platform build would do so a native (non-Docker) install ships a working
-  ffprobe instead of fetching one unpinned on first boot. (`workflow_dispatch` builds the bundles as
-  run artifacts without publishing, for a dry run.)
+- **`.github/workflows/release.yml`** cuts a SemVer release of this repo's own binary — the pinned,
+  verified **ffmpeg** it uses to synthesize fixtures: push a tag `vX.Y.Z` and it attaches
+  `ffmpeg-<rid>.zip` for every RID plus `manifest.json` as release assets. (ffprobe, Listenarr's
+  binary, isn't published here — that's produced on demand by `package_ffbinary.py --program ffprobe`
+  for Listenarr's *own* build to bake a working ffprobe into its per-platform artifacts, so it never
+  fetches one unpinned on first boot.) `workflow_dispatch` builds the bundles as run artifacts without
+  publishing, for a dry run.
 
 ## Library layouts — generate one that matches your tool
 

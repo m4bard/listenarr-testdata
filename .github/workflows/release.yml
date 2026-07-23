@@ -1,14 +1,14 @@
 name: release
 
-# Cut a SemVer release with platform-correct ffprobe bundles. Push a tag `vX.Y.Z` to trigger; the
-# release attaches `ffprobe-<rid>.zip` for every Listenarr RID (linux-x64, linux-arm64, osx-x64,
-# win-x64) plus `manifest.json` (archive + extracted-binary sha256s). Each bundle carries the pinned,
-# sha256-verified ffprobe for one RID.
+# Cut a SemVer release with platform-correct ffmpeg bundles — the pinned, sha256-verified ffmpeg
+# this harness uses to synthesize fixture audio, published per platform. Push a tag `vX.Y.Z` to
+# trigger; the release attaches `ffmpeg-<rid>.zip` for every RID (linux-x64, linux-arm64, osx-x64,
+# win-x64) plus `manifest.json` (archive + extracted-binary sha256s).
 #
-# This is the working reference for the "bake a platform-correct ffprobe into the release" offer:
-# Listenarr's own per-platform build (build-and-publish.yml) would drop the matching bundle's ffprobe
-# into each platform artifact, so a native (non-Docker) install ships a working ffprobe and never
-# runs the unpinned first-boot download.
+# ffprobe (Listenarr's only ff-binary) is NOT published here — that one is produced on demand by the
+# same tool (`package_ffbinary.py --program ffprobe`) for Listenarr's own build to bake into its
+# per-platform artifacts. It's Listenarr's binary, so it's a tool Listenarr runs, not a release this
+# repo hosts.
 #
 # `workflow_dispatch` is a dry run: it builds and uploads the bundles as run artifacts without
 # publishing a release, so the packaging can be exercised without cutting a tag.
@@ -31,19 +31,19 @@ jobs:
           python-version: "3.12"
 
       # One ubuntu runner builds every platform's bundle: package_ffbinary provisions each RID's
-      # pinned archive, verifies its sha256 before extraction, and pulls out just ffprobe — no
+      # pinned archive, verifies its sha256 before extraction, and pulls out just ffmpeg — no
       # per-platform runner needed, because extracting a file never executes it.
-      - name: Build per-platform ffprobe bundles
-        run: python tools/package_ffbinary.py --out dist --zip
+      - name: Build per-platform ffmpeg bundles
+        run: python tools/package_ffbinary.py --out dist --program ffmpeg --zip
 
       # Dry run (manual dispatch, no tag): keep the bundles as downloadable run artifacts.
       - name: Upload bundles (dry run)
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: ffprobe-bundles
+          name: ffmpeg-bundles
           path: |
-            dist/ffprobe-*.zip
+            dist/ffmpeg-*.zip
             dist/manifest.json
 
       # Real release (tag push): publish the bundles as release assets. The tag is the SemVer.
@@ -53,6 +53,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ver=$(python -c "import sys; sys.path.insert(0,'tools'); import package_ffbinary as p; print(p.DEFAULT_VERSION)")
-          gh release create "${GITHUB_REF_NAME}" dist/ffprobe-*.zip dist/manifest.json \
+          gh release create "${GITHUB_REF_NAME}" dist/ffmpeg-*.zip dist/manifest.json \
             --title "${GITHUB_REF_NAME}" \
-            --notes "Platform-correct ffprobe bundles from jellyfin-ffmpeg v${ver}. Each ffprobe-<rid>.zip carries the pinned, sha256-verified ffprobe for one Listenarr RID (linux-x64, linux-arm64, osx-x64, win-x64), with manifest.json recording the archive and extracted-binary sha256s."
+            --notes "Platform-correct ffmpeg bundles from jellyfin-ffmpeg v${ver} — the pinned, sha256-verified ffmpeg this harness uses to synthesize fixtures. Each ffmpeg-<rid>.zip carries one RID's binary (linux-x64, linux-arm64, osx-x64, win-x64), with manifest.json recording the archive and extracted-binary sha256s."

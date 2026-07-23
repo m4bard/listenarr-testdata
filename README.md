@@ -109,6 +109,12 @@ benchmark deterministic and race-free.
   here — this repo only uses it to provision the Listenarr container it benchmarks;
   `package_ffbinary.py --program ffprobe` can emit ffprobe bundles on demand for anyone who wants
   them.) `workflow_dispatch` builds the bundles as run artifacts without publishing, for a dry run.
+- **`tools/install_ffbinary.py`** consumes a release the other way: it detects the host RID, looks up
+  the asset's sha256 from GitHub's public Releases API (the `digest` field), downloads the matching
+  `<program>-<rid>.zip` (a pinned `--tag` or `latest`), and **refuses it unless the download matches
+  that digest** — an out-of-band integrity check, fetched separately from the bytes rather than read
+  from the zip's own manifest. It then re-checks the extracted binary against the in-zip
+  `manifest.json` (defense in depth) and drops it into `--dest`.
 
 ## Library layouts — generate one that matches your tool
 

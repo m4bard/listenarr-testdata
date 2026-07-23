@@ -97,11 +97,12 @@ the same script is the proposed deployment path, no C# port required.
   ships for — linux-x64, linux-arm64, win-x64, and osx-x64 (the last validated under Rosetta on the
   Apple-Silicon runner, which is how Listenarr runs on Apple Silicon) — against both the current
   source and jellyfin-ffmpeg, and reports per-platform outcomes.
-- **`tools/package_ffprobe.py`** packages just the `ffprobe` binary for each RID from the harness's
-  pins, verifying each archive against its sha256 **before** extraction and emitting a
-  `manifest.json` that records both the archive and extracted-binary hashes. `--verify` re-checks the
-  live release against the pins to catch upstream drift; `--zip` emits a per-platform
-  `ffprobe-<rid>.zip` (binary + manifest) — the shape a release ships.
+- **`tools/package_ffbinary.py`** packages just one binary for each RID via the shared harness —
+  `--program ffprobe` (Listenarr's need) or `--program ffmpeg` — verifying each archive against its
+  sha256 **before** extraction and emitting a `manifest.json` that records both the archive and
+  extracted-binary hashes. `--verify` re-checks the live release against the pins to catch upstream
+  drift; `--zip` emits a per-platform `<program>-<rid>.zip` (binary + manifest) — the shape a release
+  ships.
 - **`.github/workflows/release.yml`** cuts a SemVer release from those bundles: push a tag `vX.Y.Z`
   and it attaches `ffprobe-<rid>.zip` for every RID plus `manifest.json` as release assets. This is
   the reference for baking a platform-correct, pinned ffprobe into a release artifact — what

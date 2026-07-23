@@ -30,11 +30,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      # One ubuntu runner builds every platform's bundle: package_ffprobe fetches each RID's pinned
-      # archive, verifies its sha256 before extraction, and pulls out just ffprobe — no per-platform
-      # runner needed, because extracting a file never executes it.
+      # One ubuntu runner builds every platform's bundle: package_ffbinary provisions each RID's
+      # pinned archive, verifies its sha256 before extraction, and pulls out just ffprobe — no
+      # per-platform runner needed, because extracting a file never executes it.
       - name: Build per-platform ffprobe bundles
-        run: python tools/package_ffprobe.py --out dist --zip
+        run: python tools/package_ffbinary.py --out dist --zip
 
       # Dry run (manual dispatch, no tag): keep the bundles as downloadable run artifacts.
       - name: Upload bundles (dry run)
@@ -52,7 +52,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ver=$(python -c "import sys; sys.path.insert(0,'tools'); import package_ffprobe as p; print(p.DEFAULT_VERSION)")
+          ver=$(python -c "import sys; sys.path.insert(0,'tools'); import package_ffbinary as p; print(p.DEFAULT_VERSION)")
           gh release create "${GITHUB_REF_NAME}" dist/ffprobe-*.zip dist/manifest.json \
             --title "${GITHUB_REF_NAME}" \
             --notes "Platform-correct ffprobe bundles from jellyfin-ffmpeg v${ver}. Each ffprobe-<rid>.zip carries the pinned, sha256-verified ffprobe for one Listenarr RID (linux-x64, linux-arm64, osx-x64, win-x64), with manifest.json recording the archive and extracted-binary sha256s."

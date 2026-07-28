@@ -18,7 +18,12 @@
 # correct scanner links the target's own files and nothing else.
 #
 #   ./tools/validate_scan_attribution.sh --image ghcr.io/listenarrs/listenarr:canary \
-#       --asin B004FOLXEO --only-asin B004FOLXEO,B01ATTZF38,B0C6FJ6L34
+#       --asin B004FOLXEO --layout author-title \
+#       --only-asin B004FOLXEO,B01ATTZF38,B0C6FJ6L34
+#
+# NOTE the layout. The default {author}/{series}/{title} cannot render a book with no series
+# and silently skips it, so a set of standalone books generates an EMPTY library. Use
+# author-title for those.
 #
 # Exit 0 = no misattribution. Exit 1 = the scan claimed files belonging to another book.
 #
@@ -115,6 +120,10 @@ else
 fi
 FILES=$(find "$LIBRARY" -type f ! -name manifest.json | wc -l)
 log INFO "library: ${FILES} audio files"
+# Fail fast and say why. The usual cause is a layout the chosen books cannot express: the
+# default {author}/{series}/{title} skips anything with no series, so a set of standalone
+# books yields an empty tree and there is nothing to attribute.
+[[ "$FILES" -gt 0 ]] || die "the library is empty — the '${LAYOUT}' layout could not render any of the requested books (a layout with {series} skips books that have none; try --layout author-title)"
 
 log INFO "provisioning pinned ffprobe"
 "$PYTHON" "${ROOT}/tools/ffprobe_provisioner.py" --config-dir "$CONFIG" >/dev/null \

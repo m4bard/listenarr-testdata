@@ -86,19 +86,20 @@ die() { log ERROR "$*"; exit 1; }
 [[ -n "$ASIN" ]] || die "--asin is required (see --help)"
 [[ -n "$LABEL" ]] || LABEL="$IMAGE"
 
-if command -v podman >/dev/null 2>&1; then RUNTIME=podman
-elif docker info >/dev/null 2>&1; then RUNTIME=docker
-else die "no usable container runtime"; fi
-
-[[ -x "$PYTHON" ]] || die "no venv — run: python3 -m venv .venv && .venv/bin/pip install -e ."
-command -v sqlite3 >/dev/null 2>&1 || die "sqlite3 is required"
+# The project venv by preference; fall back to python3 so the generation half of this script
+# (and its tests) work anywhere the project is importable, e.g. a CI runner with `pip install -e .`.
+if [[ ! -x "$PYTHON" ]]; then
+    command -v python3 >/dev/null 2>&1 || die "no python3, and no venv at ${ROOT}/.venv"
+    PYTHON="$(command -v python3)"
+fi
 
 cleanup() {
     if [[ "$KEEP" -eq 1 ]]; then
         log INFO "leaving ${CONTAINER} running on port ${PORT}"
         return
     fi
-    "$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1 || true
+    [[ -n "${RUNTIME:-}" ]] && "$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1
+    return 0
 }
 trap cleanup EXIT
 
@@ -124,6 +125,12 @@ log INFO "library: ${FILES} audio files"
 # default {author}/{series}/{title} skips anything with no series, so a set of standalone
 # books yields an empty tree and there is nothing to attribute.
 [[ "$FILES" -gt 0 ]] || die "the library is empty — the '${LAYOUT}' layout could not render any of the requested books (a layout with {series} skips books that have none; try --layout author-title)"
+
+# Only now does this need a container: the inputs are known good and there is something to scan.
+if command -v podman >/dev/null 2>&1; then RUNTIME=podman
+elif docker info >/dev/null 2>&1; then RUNTIME=docker
+else die "no usable container runtime (podman not installed, docker daemon unreachable)"; fi
+command -v sqlite3 >/dev/null 2>&1 || die "sqlite3 is required"
 
 log INFO "provisioning pinned ffprobe"
 "$PYTHON" "${ROOT}/tools/ffprobe_provisioner.py" --config-dir "$CONFIG" >/dev/null \

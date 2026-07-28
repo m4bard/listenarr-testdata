@@ -233,3 +233,15 @@ class TestScript:
             ["bash", str(self.SCRIPT), "--nonsense"], capture_output=True, text=True
         )
         assert result.returncode != 0
+
+    def test_empty_library_is_refused_before_a_container_is_started(self) -> None:
+        # The default {author}/{series}/{title} layout silently skips books with no series.
+        # A set of standalone books therefore generates nothing, and the tool must say so
+        # rather than scanning an empty tree and calling the absence of findings a pass.
+        result = subprocess.run(
+            ["bash", str(self.SCRIPT), "--asin", "B004FOLXEO", "--only-asin", "B004FOLXEO"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "library is empty" in (result.stderr + result.stdout)

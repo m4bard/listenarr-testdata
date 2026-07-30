@@ -56,3 +56,37 @@ def test_help_lists_branch_and_forwarded_flags() -> None:
     assert result.returncode == 0
     assert "--branch" in result.stdout
     assert "--layout" in result.stdout
+
+
+def test_default_tool_is_the_benchmark() -> None:
+    result = run("--branch", "b", "--dry-run")
+    assert "benchmark_scan.sh" in (result.stdout + result.stderr)
+
+
+def test_attribution_tool_dispatches_to_the_attribution_validator() -> None:
+    # The point of --tool is that someone reviewing a scan-matching PR can build the branch and
+    # see who the linked files really belong to in one command, without knowing the harness.
+    result = run("--branch", "b", "--tool", "attribution", "--dry-run")
+    assert result.returncode == 0
+    out = result.stdout + result.stderr
+    assert "validate_scan_attribution.sh" in out
+    assert "benchmark_scan.sh" not in out
+
+
+def test_unknown_tool_is_refused() -> None:
+    result = run("--branch", "b", "--tool", "nonsense", "--dry-run")
+    assert result.returncode != 0
+    assert "unknown --tool" in (result.stderr + result.stdout)
+
+
+def test_attribution_flags_are_forwarded_to_the_validator() -> None:
+    result = run("--branch", "b", "--tool", "attribution", "--asin", "B004FOLXEO", "--dry-run")
+    assert result.returncode == 0
+    out = result.stdout + result.stderr
+    assert "--asin" in out and "B004FOLXEO" in out
+
+
+def test_help_lists_the_tool_choices() -> None:
+    result = run("--help")
+    assert "--tool" in result.stdout
+    assert "attribution" in result.stdout

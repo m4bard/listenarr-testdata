@@ -174,6 +174,33 @@ or `--repo URL` to build a fork.
 Under the hood it is just clone → `podman build` → `benchmark_scan.sh --image …`; run those by
 hand if you prefer.
 
+### Check what a scan actually claims
+
+`--tool attribution` swaps the benchmark for `validate_scan_attribution.sh`, which answers a
+different question: of the files a scan linked to a book, how many really belong to it?
+
+```bash
+./tools/vet-against.sh \
+    --repo https://github.com/<owner>/Listenarr.git --branch <your-branch> \
+    --tool attribution \
+    --asin B004FOLXEO --layout author-title \
+    --only-asin B004FOLXEO,B01ATTZF38,B0C6FJ6L34
+```
+
+That builds the branch, generates a library holding those three books, adds only the first one,
+clears its BasePath so the scan walks the whole library root, scans, and then maps every linked
+file back to its true owner using the generator's manifest. Exit `0` means the scan claimed only
+its own files, `1` means it claimed a file belonging to another book, and `2` means the result
+could not be judged.
+
+Those three ASINs are M. R. James' *Ghost Stories of an Antiquary*, Henry James' *The Turn of the
+Screw*, and James M. Barrie's *Peter Pan in Kensington Gardens*: three different authors whose
+names overlap, which is what makes them useful for testing author matching. Use `--layout
+author-title` for standalone books, because the default `{author}/{series}/{title}` cannot render
+a book with no series and will silently skip it.
+
+Swap in any ASIN from `corpus/corpus.json`, or drop `--only-asin` to put the whole corpus on disk.
+
 `--no-basepath` clears each book's BasePath so the scan root falls back to the library root —
 the state that exercises discovery and attribution. The run reports per-book scan cost and flags
 any BasePath that climbed past its own book folder, e.g.:

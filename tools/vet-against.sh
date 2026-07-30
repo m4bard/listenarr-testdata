@@ -15,6 +15,7 @@ unset TMOUT
 REPO="https://github.com/Listenarrs/Listenarr.git"
 BRANCH=""
 DRY_RUN=0
+TOOL="benchmark"
 RUNTIME=""
 PASSTHROUGH=()   # forwarded verbatim to benchmark_scan.sh (--layout, --scenario, --books, ...)
 
@@ -29,6 +30,10 @@ vet-against.sh — build a Listenarr branch and run the harness against it.
 
   --repo URL       git repo to build (default: ${REPO})
   --branch REF     branch or tag to build (REQUIRED)
+  --tool KEY       what to run against the build (default: ${TOOL})
+                     benchmark   — time a scan (tools/benchmark_scan.sh)
+                     attribution — show which files a scan claims, and whose they
+                                   really are (tools/validate_scan_attribution.sh)
   --dry-run        print the clone/build/run plan and exit; touch nothing
   --help           this help
 
@@ -45,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)    REPO="$2";   shift 2 ;;
         --branch)  BRANCH="$2"; shift 2 ;;
+        --tool)    TOOL="$2";   shift 2 ;;
         --dry-run) DRY_RUN=1;   shift ;;
         -h|--help) usage; exit 0 ;;
         *)         PASSTHROUGH+=("$1"); shift ;;
@@ -52,6 +58,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$BRANCH" ]] || die "--branch is required (see --help)"
+case "$TOOL" in
+    benchmark)   RUNNER="${ROOT}/tools/benchmark_scan.sh" ;;
+    attribution) RUNNER="${ROOT}/tools/validate_scan_attribution.sh" ;;
+    *) die "unknown --tool '${TOOL}' (expected: benchmark, attribution)" ;;
+esac
 command -v git >/dev/null 2>&1 || die "git is required (Ubuntu: sudo apt install git)"
 if command -v podman >/dev/null 2>&1; then
     RUNTIME=podman
@@ -72,7 +83,7 @@ plan (dry run — nothing executed):
   1. git clone --depth 1 --branch ${BRANCH} ${REPO} ${SRC}
   2. tag  = listenarr-vet:<short-sha of ${BRANCH}>
   3. ${RUNTIME} build -t <tag> ${SRC}        # skipped if <tag> already exists
-  4. ${ROOT}/tools/benchmark_scan.sh --image localhost/<tag>${PASSTHROUGH:+ ${PASSTHROUGH[*]}}
+  4. ${RUNNER} --image localhost/<tag>${PASSTHROUGH:+ ${PASSTHROUGH[*]}}
   5. rm -rf ${SRC}                            # the image is cached, the clone is not
 EOF
     exit 0
@@ -99,5 +110,5 @@ fi
 
 rm -rf "$SRC"
 
-log "running the harness against ${TAG}"
-exec "${ROOT}/tools/benchmark_scan.sh" --image "localhost/${TAG}" "${PASSTHROUGH[@]}"
+log "running ${TOOL} against ${TAG}"
+exec "$RUNNER" --image "localhost/${TAG}" "${PASSTHROUGH[@]}"

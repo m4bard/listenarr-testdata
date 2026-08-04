@@ -7,12 +7,15 @@ that really does lose a file.
 """
 from __future__ import annotations
 
+import email.message
 import json
 import pathlib
 import shutil
 import sqlite3
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 
 import pytest
 
@@ -21,6 +24,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "corpus"))
 
 import cases
+import verify_scan
 from generate_library import generate
 from verify_scan import (
     Observation,
@@ -663,3 +667,307 @@ class TestRenameAudit:
         (out / "escape.m4b").symlink_to(outside)
         problems = audit(before, out)
         assert any("ESCAPE" in p for p in problems)
+
+
+
+# --------------------------------------------------------------------------------------
+# The command-line surface. These call main() in-process rather than spawning a subprocess:
+# TestStrictExitCode above already proves exit codes survive a real process boundary, and
+# calling directly makes these paths measurable and quick.
+# --------------------------------------------------------------------------------------
+
+def run_main(monkeypatch: pytest.MonkeyPatch, *args: str) -> int:
+    monkeypatch.setattr(sys, "argv", ["verify_scan.py", *args])
+    return verify_scan.main()
+
+
+def rot_the_schema(path: pathlib.Path) -> pathlib.Path:
+    """Right file, wrong schema: the shape source rot actually takes."""
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        "CREATE TABLE Books (Id INTEGER PRIMARY KEY, Title TEXT);"
+        "CREATE TABLE BookFiles (Id INTEGER PRIMARY KEY, BookId INTEGER, Path TEXT);"
+    )
+    connection.commit()
+    connection.close()
+    return path
+
+
+def linked_observations(out: pathlib.Path, manifest: dict) -> list[dict]:
+    return [{"path": str(out / e["path"]), "asin": e["belongs_to_asin"],
+             "title": e["true_title"]}
+            for e in manifest["entries"] if e["kind"] == "book"]
+
+
+class TestInconclusiveStillProducesArtifacts:
+    """An inconclusive run must not leave a CI gate reading a missing file as success.
+
+    This is the sharpest false-pass risk the tool has. When it cannot look at all, from a rotted
+    source or a scope that matched nothing, it still has to write whatever machine artifact was
+    asked for, saying `inconclusive`, and return 2 so a caller can tell "could not look" from
+    "the scan got it wrong". A run that fails but writes nothing is indistinguishable, to a
+    pipeline that only inspects the report, from a run that never happened.
+    """
+
+    @pytest.mark.contract
+    def test_a_rotted_source_returns_two_and_writes_an_inconclusive_report(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out, _ = library
+        db = rot_the_schema(out / "rotted.db")
+        report = out / "report.json"
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--db", str(db), "--json", str(report)) == 2
+        assert report.exists(), "a gate reading this path would find nothing at all"
+        assert json.loads(report.read_text())["summary"]["overall"] == "inconclusive"
+
+    @pytest.mark.contract
+    def test_a_rotted_source_also_writes_the_junit_artifact(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out, _ = library
+        db = rot_the_schema(out / "rotted.db")
+        junit = out / "report.xml"
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--db", str(db), "--junit", str(junit)) == 2
+        text = junit.read_text()
+        assert 'errors="1"' in text and "inconclusive" in text
+
+    @pytest.mark.contract
+    def test_a_scope_that_matches_nothing_is_inconclusive_not_a_pass(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--only-asin naming a book that was never generated must not look like a clean run."""
+        out, _ = library
+        observed = out / "observed.json"
+        observed.write_text("[]")
+        report = out / "report.json"
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--observed", str(observed), "--only-asin", "B0NOTREAL00",
+                        "--json", str(report), "--strict") == 2
+        assert json.loads(report.read_text())["summary"]["overall"] == "inconclusive"
+
+    @pytest.mark.contract
+    def test_an_inconclusive_summary_is_not_merely_zero_failures(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`failed: 0` on its own reads as success. `overall` is what a gate must key on."""
+        out, _ = library
+        report = out / "report.json"
+        run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                 "--db", str(rot_the_schema(out / "rotted.db")), "--json", str(report))
+        summary = json.loads(report.read_text())["summary"]
+        assert (summary["passed"], summary["failed"]) == (0, 0)
+        assert summary["overall"] == "inconclusive"
+
+
+class TestJsonToStdoutStaysParseable:
+    @pytest.mark.contract
+    def test_nothing_but_json_reaches_stdout(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--json -` is meant to be piped. A stray progress line makes it unparseable."""
+        out, manifest = library
+        observed = out / "observed.json"
+        observed.write_text(json.dumps(linked_observations(out, manifest)))
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--observed", str(observed), "--json", "-") == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["summary"]["overall"] in {"pass", "fail"}
+
+    @pytest.mark.contract
+    def test_an_inconclusive_run_also_keeps_stdout_parseable(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        out, _ = library
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--db", str(rot_the_schema(out / "rot.db")), "--json", "-") == 2
+        assert json.loads(capsys.readouterr().out)["summary"]["overall"] == "inconclusive"
+
+
+class TestTheTextTable:
+    def test_a_clean_run_prints_the_scenario_and_a_verdict(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        out, manifest = library
+        observed = out / "observed.json"
+        observed.write_text(json.dumps(linked_observations(out, manifest)))
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--observed", str(observed)) == 0
+        printed = capsys.readouterr().out
+        assert manifest["scenario"] in printed
+
+    def test_verbose_names_the_failing_file(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A failure the operator cannot locate is barely a failure report."""
+        out, _ = library
+        observed = out / "observed.json"
+        observed.write_text("[]")
+        run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                 "--observed", str(observed), "--verbose")
+        assert "missing" in capsys.readouterr().out.lower()
+
+
+class TestSnapshotAndAudit:
+    def test_snapshot_then_audit_round_trips_on_an_untouched_library(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out, _ = library
+        snap = out / "before.json"
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--snapshot", str(snap)) == 0
+        assert snap.exists()
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--audit", str(snap)) == 0
+
+    @pytest.mark.contract
+    def test_a_lost_file_makes_the_audit_fail(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The destructive check: deleting an audio file must be caught, not tolerated."""
+        out, manifest = library
+        snap = out / "before.json"
+        run_main(monkeypatch, "--manifest", str(out / "manifest.json"), "--snapshot", str(snap))
+        capsys.readouterr()
+        next(out / e["path"] for e in manifest["entries"] if e["kind"] == "book").unlink()
+        assert run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                        "--audit", str(snap)) == 1
+        assert "RENAME AUDIT FAILED" in capsys.readouterr().out
+
+
+class TestArgumentErrors:
+    def test_no_source_is_refused(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out, _ = library
+        with pytest.raises(SystemExit):
+            run_main(monkeypatch, "--manifest", str(out / "manifest.json"))
+
+    def test_a_root_map_without_a_separator_is_refused(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out, _ = library
+        observed = out / "observed.json"
+        observed.write_text("[]")
+        with pytest.raises(SystemExit):
+            run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                     "--observed", str(observed), "--root-map", "no-equals-sign")
+
+
+class TestApiSourceFailsClosed:
+    """The API source must refuse rather than quietly contribute zero files.
+
+    A source that returns an empty list when an endpoint has moved makes the scan look perfectly
+    clean while nothing was actually read. That is the same false-pass shape as the schema rot the
+    sqlite source guards against, so it refuses in the same way.
+    """
+
+    def _urlopen(self, payloads: dict[str, object]) -> object:
+        class Response:
+            def __init__(self, body: object) -> None:
+                self._body = json.dumps(body).encode()
+
+            def read(self) -> bytes:
+                return self._body
+
+            def __enter__(self) -> Response:
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                return None
+
+        def _open(request: object, timeout: int = 30) -> object:
+            url = request.full_url  # type: ignore[attr-defined]
+            for suffix, body in payloads.items():
+                if url.endswith(suffix):
+                    return Response(body)
+            raise urllib.error.HTTPError(url=url, code=404, msg="Not Found",
+                                         hdrs=email.message.Message(), fp=None)
+
+        return _open
+
+    @pytest.mark.contract
+    def test_a_missing_endpoint_raises_rather_than_returning_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(urllib.request, "urlopen", self._urlopen({}))
+        with pytest.raises(SourceError, match="HTTP 404"):
+            verify_scan.from_api("http://example.invalid", None)
+
+    @pytest.mark.contract
+    def test_a_changed_response_shape_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A string where a list of books was expected is a moved schema, not an empty library."""
+        monkeypatch.setattr(
+            urllib.request, "urlopen",
+            self._urlopen({verify_scan.API_LIBRARY_PATH: "not a list"}),
+        )
+        with pytest.raises(SourceError, match="did not return a list"):
+            verify_scan.from_api("http://example.invalid", None)
+
+    @pytest.mark.contract
+    def test_a_vanished_files_endpoint_raises_rather_than_zero_files(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The debug endpoint can disappear. A book silently contributing no files is the bug."""
+        monkeypatch.setattr(
+            urllib.request, "urlopen",
+            self._urlopen({verify_scan.API_LIBRARY_PATH: [{"id": 1, "asin": "B0", "title": "t"}]}),
+        )
+        with pytest.raises(SourceError):
+            verify_scan.from_api("http://example.invalid", None)
+
+    def test_a_well_formed_response_is_read(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            urllib.request, "urlopen",
+            self._urlopen({verify_scan.API_LIBRARY_PATH: [
+                {"id": 1, "asin": "B002UUFXKU", "title": "The Valley of Fear",
+                 "files": [{"path": "/audiobooks/a.m4b"}]}
+            ]}),
+        )
+        observations = verify_scan.from_api("http://example.invalid", None)
+        assert [o.path for o in observations] == ["/audiobooks/a.m4b"]
+        assert observations[0].asin == "B002UUFXKU"
+
+    def test_a_wrapped_list_is_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The endpoint has returned both a bare list and an {items: [...]} envelope."""
+        monkeypatch.setattr(
+            urllib.request, "urlopen",
+            self._urlopen({verify_scan.API_LIBRARY_PATH: {"items": [
+                {"id": 1, "asin": "B0", "title": "t", "files": [{"path": "/x.m4b"}]}
+            ]}}),
+        )
+        assert len(verify_scan.from_api("http://example.invalid", None)) == 1
+
+
+class TestJunitRendersARealReport:
+    @pytest.mark.contract
+    def test_a_failing_case_becomes_a_junit_failure(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CI renders this file. A failure that shows up as a pass there is a false green."""
+        out, _ = library
+        observed = out / "observed.json"
+        observed.write_text("[]")
+        junit = out / "report.xml"
+        run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                 "--observed", str(observed), "--junit", str(junit))
+        text = junit.read_text()
+        assert "<testsuite" in text and "<failure" in text
+        assert 'failures="0"' not in text
+
+    def test_a_clean_run_renders_no_failures(
+        self, library: tuple[pathlib.Path, dict], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out, manifest = library
+        observed = out / "observed.json"
+        observed.write_text(json.dumps(linked_observations(out, manifest)))
+        junit = out / "report.xml"
+        run_main(monkeypatch, "--manifest", str(out / "manifest.json"),
+                 "--observed", str(observed), "--junit", str(junit))
+        assert 'failures="0"' in junit.read_text()

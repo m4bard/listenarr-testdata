@@ -131,11 +131,14 @@ def collect(repos: tuple[str, ...], user: str) -> list[Thread]:
     seen: dict[tuple[str, int], Thread] = {}
     for repo in repos:
         for qualifier in ("author", "commenter"):
+            authored = qualifier == "author"
             for item in search_threads(repo, user, qualifier):
                 key = (repo, int(item["number"]))
                 if key in seen:
-                    if qualifier == "author":
-                        seen[key].ours = True
+                    # A thread we both authored and commented on arrives twice. OR rather than
+                    # assignment so the mark does not depend on which search ran first: whether
+                    # it is ours is a property of the thread, not of the order we found it in.
+                    seen[key].ours = seen[key].ours or authored
                     continue
                 seen[key] = Thread(
                     repo=repo,
@@ -143,7 +146,7 @@ def collect(repos: tuple[str, ...], user: str) -> list[Thread]:
                     title=item["title"],
                     state=item["state"],
                     is_pr="pull_request" in item,
-                    ours=qualifier == "author",
+                    ours=authored,
                     updated_at=item["updated_at"],
                 )
     for thread in seen.values():

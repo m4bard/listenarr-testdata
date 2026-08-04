@@ -30,21 +30,18 @@ import build_corpus
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # Ambiguous as of 2026-08-04, measured against the committed corpus. Shrinking this list is the
-# point of having it; growing it is a regression.
+# point of having it; growing it is a regression. Twenty series cases were fixed by choosing a
+# fragment that names the specific work. What remains is two kinds of case that substring
+# matching cannot separate at all: a title that is a strict prefix of another (Pellucidar inside
+# Tanar of Pellucidar, Faust inside Faust I), and the seeds with no Latin fragment to give.
 KNOWN_AMBIGUOUS_SEEDS: frozenset[str] = frozenset({
     "B002V0PVJC",
     "B002V1OVFQ",
-    "B002V5B7TK",
-    "B002V5CJM4",
-    "B002V8OEG0",
     "B002V9Z9WW",
     "B003F6JXC2",
-    "B004V5UU0A",
-    "B004YWTD30",
     "B006C692NM",
     "B006GDCIY6",
     "B00769TAK4",
-    "B007BR5KZA",
     "B008Q3A6JI",
     "B008WB1L70",
     "B00APWL9E4",
@@ -52,38 +49,24 @@ KNOWN_AMBIGUOUS_SEEDS: frozenset[str] = frozenset({
     "B00BYIJW6A",
     "B00EOO99WS",
     "B00JQEQFL4",
-    "B00OQQTXE8",
     "B00T9V0BU0",
     "B00TDZQG3I",
     "B00TPKF9QQ",
     "B00TPW1FLM",
     "B00UXEBBIS",
     "B01AGYIKG0",
-    "B01FKWL15A",
-    "B01GIO3GFW",
-    "B01IDLCAMI",
-    "B01JWOHBEC",
     "B01LFD0GWM",
     "B01MU7YH84",
-    "B076HSP1FT",
     "B076PQXBV7",
     "B07B7MCLB3",
     "B07RGRBKS5",
-    "B07TKCFMD1",
-    "B084J9S79P",
-    "B0899BQL13",
     "B08BTM5TDG",
     "B08BTZVGS8",
     "B08BV2RNS9",
     "B08ML2HVVW",
-    "B08SQ3S34B",
-    "B0B1QKNWH3",
     "B0B5Z12CCM",
-    "B0C6B525PQ",
     "B0CTK91XJ6",
-    "B0DKK1PKN7",
     "B0DY31J772",
-    "B0DZXWPQNW",
     "B0F48KS3BX",
 })
 

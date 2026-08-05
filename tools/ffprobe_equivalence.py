@@ -148,6 +148,13 @@ def compare_to_golden(
         for field, value in view.items():
             if gold.get(field) != value:
                 diffs.append(FieldDiff(file.name, field, gold.get(field), value))
+
+    # The other direction, which is the one that fails silently. This walks the corpus, so a
+    # golden entry with no corresponding file was simply never compared. A corpus that lost
+    # files would then turn a red gate green while reporting EQUIVALENT, and this tool's green
+    # result is the evidence behind a public claim about cross-platform behaviour.
+    for name in sorted(set(golden) - {file.name for file in files}):
+        diffs.append(FieldDiff(name, "<not-in-corpus>", "present in golden", None))
     return diffs
 
 
@@ -180,6 +187,17 @@ def main() -> int:
             ["mktemp", "-d"], capture_output=True, text=True).stdout.strip())
         built = build_corpus(generated_dir)
     files = _corpus_files(args.corpus, built)
+    # Nothing to compare is not equivalence. Without this, a checkout that did not fetch the
+    # corpus, or a path typo, compares zero files and reports the build as equivalent.
+    if not files:
+        print(
+            f"no files to compare in {args.corpus or generated_dir} — refusing to report "
+            "equivalence over an empty corpus",
+            file=sys.stderr,
+        )
+        if generated_dir:
+            shutil.rmtree(generated_dir, ignore_errors=True)
+        return 2
 
     try:
         if args.emit:

@@ -43,6 +43,15 @@ def _index(report: dict[str, Any], side: str) -> dict[str, dict[str, Any]]:
             f"the {side} report is inconclusive ({report.get('error', 'no detail')}) — there is "
             "nothing to diff against a run that could not observe the scan"
         )
+    # A report with no results at all is refused for the same reason. Without this, an empty or
+    # wrong-format file indexes to nothing, every head case classifies as `added` rather than
+    # regressed, and --strict reports clean over a run where everything failed. That is the
+    # failure this tool exists to prevent, so it must not be the tool's own behaviour.
+    if "results" not in report:
+        raise DiffError(
+            f"the {side} report has no `results` — it is empty, truncated, or not a "
+            "verify_scan report, and diffing against it would report every head case as new"
+        )
     return {r["path"]: r for r in report.get("results", [])}
 
 

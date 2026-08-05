@@ -29,6 +29,14 @@ python3 -m venv .venv && .venv/bin/pip install -e .
 `benchmark_scan.sh` checks for each of these at startup and tells you which is missing rather than
 failing partway through.
 
+One thing to know before the first generation: the generator does **not** use the ffmpeg on `PATH`
+by default. It provisions a pinned, sha256-verified build through `tools/ffmpeg_harness.py`
+(source `jellyfin`), caching it under `build/ffmpeg-cache`, so the first run on a fresh clone
+downloads once and every run after that is offline. That is the repo dogfooding its own
+provisioner. If you would rather use the ffmpeg you already have, pass
+`--ffmpeg-source system`; `--ffmpeg-source johnvansickle` provisions from Listenarr's current
+Linux-only source instead.
+
 ## Reproduce a bug in four commands
 
 ```bash
@@ -139,7 +147,7 @@ Example paths use one book — *A Princess of Mars* (Edgar Rice Burroughs, Barso
 
 ```bash
 # a library in Listenarr's own layout, from nothing:
-python3 tools/generate_library.py --layout listenarr --out ./build/lib
+.venv/bin/python tools/generate_library.py --layout listenarr --out ./build/lib
 ```
 
 Honest caveats: **AudioBookShelf** documents *several* shapes (series and flat), so it has no
@@ -167,9 +175,9 @@ than trust any single one. If you exercise one adversarial layout, exercise this
 
 It clones the branch, builds a container image tagged by commit (reused if already built), scans
 a generated library against it, and drops the clone (the image is cached, the clone is not). Any
-flag it doesn't recognise is forwarded to `benchmark_scan.sh` — `--layout`, `--scenario`,
-`--books`, `--no-basepath`, `--keep`. Pass `--dry-run` to print the plan without touching anything,
-or `--repo URL` to build a fork.
+flag it doesn't recognise is forwarded verbatim to whichever tool `--tool` selected, which by
+default is `benchmark_scan.sh` — `--layout`, `--scenario`, `--books`, `--no-basepath`, `--keep`.
+Pass `--dry-run` to print the plan without touching anything, or `--repo URL` to build a fork.
 
 Under the hood it is just clone → `podman build` → `benchmark_scan.sh --image …`; run those by
 hand if you prefer.
@@ -213,6 +221,50 @@ The library mounts read-write, matching a real deployment (Listenarr organizes f
 roots); determinism comes from regenerating the library from a fixed `--seed`, not from an
 immutable mount.
 
+### The narrower runtime checks
+
+`vet-against.sh` builds an image and hands it to one of two tools. The remaining runtime checks skip
+the build and take an image directly, either a `listenarr-vet:<sha>` you already built or a
+published tag. Each asserts a single behaviour end to end against a running container rather than
+timing or scoring a whole scan, and each provisions a pinned ffprobe first so the metadata step does
+not lose the first-boot download race.
+
+```bash
+./tools/validate_reported_size.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/validate_import_action.sh localhost/listenarr-vet:abc1234 --action symlink
+./tools/validate_sidecar_rename.sh localhost/listenarr-vet:abc1234
+./tools/check_duplicate_detection.sh ghcr.io/listenarrs/listenarr:canary
+```
+
+- **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
+  and compares three numbers that are easy to conflate: the real bytes on disk summed from the
+  manifest, the per-file sizes the library recorded, and the single total it shows for the book.
+  Keeping them apart separates a summary derived wrongly from a scan that simply missed files. The
+  book's BasePath is cleared first, so the scan walks the library root the way it does for a book
+  that has not been matched yet. Exit `0` the reported size matches, `1` it is wrong or missing,
+  `2` nothing linked so there was nothing to judge. `--asin` picks the multi-file book (it defaults
+  to *The Three Musketeers*, whose 40 chapter files make a per-file value obvious), and `--json`
+  writes the result for a machine.
+- **`validate_import_action.sh`** (Listenarr#598, Listenarr#771) drives a completed-file import
+  through the manual-import API and then inspects the result on the host, classifying it as a
+  hardlink, a symlink or a copy. That distinction is the point: link, symlink and copy are
+  indistinguishable by content, so a unit test asserting both files exist with equal content passes
+  for all three and never exercises the cross-device fallback. Same mount should produce a shared
+  inode with a link count of two or more; separate mounts must fall back to a copy, because `link()`
+  returns `EXDEV`. `--action symlink` tests the symlink action instead, which is expected to work
+  across mounts as well. Every case also asserts the source survived, since an import that removes
+  the source is data loss whichever action was asked for.
+- **`validate_sidecar_rename.sh`** (Listenarr#577) imports a book's audio, drops `cover.jpg` and
+  `metadata.json` beside it, changes the naming pattern so the book must relocate, renames, and then
+  looks at the filesystem to see whether the companions followed the audio. It asserts the correct
+  behaviour rather than the current one, so it fails today and becomes a regression guard once the
+  rename sweeps companion files. Takes an image and an optional port.
+- **`check_duplicate_detection.sh`** puts both sides of all four twin-ASIN pairs into a running
+  instance and asks the duplicate endpoint what it sees. It **reports, it does not judge**: what
+  counts as a duplicate is a product decision, and the reason to run it is to get an answer against
+  real catalogue data instead of invented rows. Set `ENDPOINT` to point it somewhere else if the
+  route moves.
+
 ### Supported API versions
 
 The harness drives two Listenarr API shapes from one code path — current `canary` and the
@@ -245,6 +297,11 @@ It has already earned its keep: it caught an ASIN that had gone dead after previ
 
 The corpus is 123 public-domain works covering 49 distinct failure modes, plus two region-lock proofs.
 
+Each book carries the failure-mode tags it is useful for, and the generator can select on them:
+`--tag title-collision,author-collision` puts only the books that exercise those modes on disk, the
+same way `--only-asin` selects by identity and `--limit` just takes the first N. Useful when you are
+chasing one matching rule and do not want the other 47 modes in the way.
+
 ## The finding worth leading with
 
 Four public-domain works each have **two distinct book ASINs that share one series ASIN and one series position**:
@@ -270,7 +327,7 @@ Six axes, composed into fourteen scenarios. `python3 corpus/cases.py` prints the
 
 | Axis | What it varies |
 |---|---|
-| **Layouts** (8) | Folder conventions: the native `{Year} - {Title}`, Audnex/Plex, AudioBookShelf, flat, loose files, title-only |
+| **Layouts** (9) | Folder conventions: the native `{Year} - {Title}` with and without a series folder, Audnex/Plex, author/series/title, AudioBookShelf, flat, author/title, loose files, title-only |
 | **Tag states** (11) | What the tags say *relative to the folder* — correct, absent, or actively lying |
 | **File structures** (5) | One book to many files: multi-part, multi-disc subfolders, per-chapter, buried single |
 | **Path hazards** (15) | Metadata that is dangerous to write to a filesystem |
@@ -284,6 +341,29 @@ A few scenarios worth knowing about:
 - **`title-collision`** — the Haggard trap. *She* and *She And Allan* are two distinct novels by one author, and each title contains the other. A bidirectional `Contains` attributes both to the same work, and because the author agrees, the author check cannot arbitrate. Note that the canonical title is *She: A History of Adventure* — Audnex folds the subtitle in — so the collision only appears on the base title, which is also the only comparison available against a folder, because nobody names a folder *She: A History of Adventure*. That cuts both ways: folder *She* with a tag reading *She: A History of Adventure* is a **true** match, so a fix that simply tightens containment until the collision goes away will break it.
 - **`rename-hazards`** — the destructive one. See below.
 - **`scale`** — volume rather than variety: ~98,000 files. This is the scenario that lets you *measure* the ffprobe fan-out instead of estimating it.
+
+### One fixture set that is not a scenario
+
+`tools/make_tag_fixtures.py` sits outside the matrix on purpose. Every scenario writes the same
+metadata to every file of a book, so no scenario can produce a book whose files **disagree** with
+each other. That is fine for the `tag-dialects` question, which is whether an extractor can read
+every spelling ffprobe might surface an ASIN under. It is useless for the other question, which is
+what a unanimity guard should do when the files of one book do not agree.
+
+```bash
+.venv/bin/python tools/make_tag_fixtures.py --out ./build/tag-adoption
+```
+
+Six directories, one book each, tagged file by file: `agree-same-dialect`, `agree-mixed-dialect`
+(one ASIN, spelled three ways across m4b, mp3 and flac), `disagree` (two files, two different and
+equally real ASINs), `partial-one-tagged`, `partial-lone-file`, and `untagged`. `partial-lone-file`
+is the one worth having. A single tagged file is trivially unanimous, so a guard that adopts on
+agreement will adopt from it, and there is no second file to disagree later: "the files agree" and
+"there was only ever one file" are not the same state. A `manifest.json` records which ASIN was
+written to which file under which keys, so a test asserts against the manifest rather than against
+hardcoded expectations. Every ASIN is a real, verified one from the corpus, and the audio is the
+usual generated silence. This one calls `ffmpeg` from `PATH` (override with `--ffmpeg`) rather than
+going through the provisioner.
 
 Generation is deterministic where it counts. The same `--seed` regenerates the same *shape* on any machine — identical folder names, file names, embedded tag values, and manifest — because all of that comes from seeded Python, not the environment. So a maintainer and a reporter running the same seed are looking at the same library in every respect a scan or a rename can observe. The one thing that is **not** guaranteed byte-for-byte across machines is the audio payload itself: it is silence synthesized by ffmpeg, and different ffmpeg builds emit slightly different encoder padding and metadata. If you need the media bytes to match too (rarely — the tags and paths are what scanners read), pin the ffmpeg version.
 
@@ -315,13 +395,40 @@ corpus/corpus.json          123 verified books, generated — do not hand-edit
 corpus/cases.py             the six axes and fourteen scenarios. Start here.
 tools/build_corpus.py       fetches and verifies every ASIN against live metadata
 tools/generate_library.py   the generator
+tools/make_tag_fixtures.py  per-file tag agreement/disagreement fixtures
 tools/verify_scan.py        expected vs observed; the rename audit; --json/--junit
 tools/conformance_diff.py   A/B two --json reports: what a branch fixed and regressed
+tools/vet-against.sh        build a branch and run the harness against it
+tools/benchmark_scan.sh     time a scan at several library sizes
+tools/validate_*.sh         the narrower runtime checks, one behaviour each
+tools/check_duplicate_*.sh  both ASINs of each twin pair, against a live instance
+tools/*_ffbinary.py         package and install pinned ffmpeg-family binaries
+tools/ffmpeg_harness.py     the one verified-extract path everything above shares
 tests/                      the test suite
 TESTING.md                  how the suite is organised; the verdict-contract convention
 ```
 
-Requires Python 3.11+, ffmpeg and ffprobe on `PATH`, and `mutagen`. Development extras (`pip install -e '.[dev]'`) add pytest, ruff and mypy; `python -m pytest` runs the suite. This is a conformance harness, so a subset of the tests are adversarial against the tool's own verdict — see [TESTING.md](TESTING.md) and `pytest -m contract`.
+`tools/attribution_report.py` and `tools/size_report.py` are the judging halves of
+`validate_scan_attribution.sh` and `validate_reported_size.sh`: the shell script produces the
+observation, the module reads it against the manifest and decides. They are documented here because
+their exit codes are the ones the shell scripts return, and both follow `verify_scan`: `0` pass,
+`1` fail, `2` inconclusive. Inconclusive is deliberately not a pass, because a checker that cannot
+see the answer key must not report success. `tools/fetch_ffprobe.py` is a CI helper, used so every
+runner in the cross-platform workflow fetches its platform's ffprobe with one command regardless of
+shell.
+
+One tool has nothing to do with the harness. `tools/upstream_status.py` lists the upstream issues
+and PRs this repo has a stake in, what happened to each of them last, and whether it is waiting on
+us or on them (the rule is blunt and the output says so: if the last comment is somebody else's,
+it is on us). `--conflicts` additionally diffs the changed files across open PRs, which catches the
+case a query about our own threads never will, namely a maintainer's branch starting to conflict
+with ours without anyone commenting. It is read-only, issuing GETs through `gh api`, and it exists
+because a hand-written ledger of open threads drifted twice.
+
+Requires Python 3.11+ and `mutagen`. ffmpeg on `PATH` is needed if you pass `--ffmpeg-source system`
+or run `make_tag_fixtures.py`, since the generator otherwise provisions its own pinned build;
+ffprobe on `PATH` is what the test suite reads generated tags back with, and the audio tests skip
+themselves without it. Development extras (`pip install -e '.[dev]'`) add pytest, ruff and mypy; `python -m pytest` runs the suite. This is a conformance harness, so a subset of the tests are adversarial against the tool's own verdict — see [TESTING.md](TESTING.md) and `pytest -m contract`.
 
 ## Provenance and licence
 

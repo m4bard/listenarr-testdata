@@ -417,14 +417,6 @@ see the answer key must not report success. `tools/fetch_ffprobe.py` is a CI hel
 runner in the cross-platform workflow fetches its platform's ffprobe with one command regardless of
 shell.
 
-One tool has nothing to do with the harness. `tools/upstream_status.py` lists the upstream issues
-and PRs this repo has a stake in, what happened to each of them last, and whether it is waiting on
-us or on them (the rule is blunt and the output says so: if the last comment is somebody else's,
-it is on us). `--conflicts` additionally diffs the changed files across open PRs, which catches the
-case a query about our own threads never will, namely a maintainer's branch starting to conflict
-with ours without anyone commenting. It is read-only, issuing GETs through `gh api`, and it exists
-because a hand-written ledger of open threads drifted twice.
-
 Requires Python 3.11+ and `mutagen`. ffmpeg on `PATH` is needed if you pass `--ffmpeg-source system`
 or run `make_tag_fixtures.py`, since the generator otherwise provisions its own pinned build;
 ffprobe on `PATH` is what the test suite reads generated tags back with, and the audio tests skip

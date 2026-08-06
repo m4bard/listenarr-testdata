@@ -234,6 +234,7 @@ not lose the first-boot download race.
 ./tools/validate_import_action.sh localhost/listenarr-vet:abc1234 --action symlink
 ./tools/validate_sidecar_rename.sh localhost/listenarr-vet:abc1234
 ./tools/check_duplicate_detection.sh ghcr.io/listenarrs/listenarr:canary
+./tools/validate_import_destination.sh --image ghcr.io/listenarrs/listenarr:canary
 ```
 
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
@@ -264,6 +265,26 @@ not lose the first-boot download race.
   counts as a duplicate is a product decision, and the reason to run it is to get an answer against
   real catalogue data instead of invented rows. Set `ENDPOINT` to point it somewhere else if the
   route moves.
+- **`validate_import_destination.sh`** (Listenarr#798) configures two root folders, drops unorganized
+  files into one, imports with the *other* selected as the destination, and reads the filesystem to
+  see which root the organized folders were created under. The destination never travels on the
+  import call itself, so the tool exercises the two paths that actually carry it: `new`, where it
+  rides along on `/library/add`, and `preexisting`, where the add returns 409 and the frontend
+  falls back to patching `basePath` afterwards. Those are different code paths behind one symptom.
+
+  A third mode, `unpatched`, is a **control that is supposed to fail**: the book is left pointing at
+  the scanned root and the frontend's patch is skipped, which is exactly what happens when that
+  `PUT` throws, since the frontend catches and continues. The run refuses to report a verdict unless
+  the control reproduces, because two passes and a check that cannot fail look identical from the
+  outside. Each mode gets its own container and a freshly generated library: sharing one instance
+  leaves a registered file behind, and #717's ownership registry remembers it even after the
+  audiobook row is deleted.
+
+  `--prime-lock-dir` creates `$HOME/.local/share` in the container first. Only #717 needs it, and
+  the reason is worth knowing: its new cross-process move gate resolves a lock directory through
+  .NET's `LocalApplicationData`, which comes back empty when `$HOME/.local/share` does not exist,
+  and the image never creates it. Every file mutation is refused until it does. The flag is off by
+  default so the blocker shows up rather than being papered over.
 
 ### Supported API versions
 

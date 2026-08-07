@@ -235,6 +235,7 @@ not lose the first-boot download race.
 ./tools/validate_sidecar_rename.sh localhost/listenarr-vet:abc1234
 ./tools/check_duplicate_detection.sh ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_import_destination.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/validate_author_cache_variants.sh --all
 ```
 
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
@@ -285,6 +286,26 @@ not lose the first-boot download race.
   .NET's `LocalApplicationData`, which comes back empty when `$HOME/.local/share` does not exist,
   and the image never creates it. Every file mutation is refused until it does. The flag is off by
   default so the blocker shows up rather than being papered over.
+
+- **`validate_author_cache_variants.sh`** (Listenarr#672) asks whether one author credited two ways
+  becomes two rows in `AuthorCacheEntries`. Issue #672 is mostly about duplicate author cards, which
+  PR#673 fixes entirely in the frontend; the issue also claims a backend effect that the PR does not
+  touch, and this is aimed at that claim. The backend normaliser keeps only letters, digits and
+  whitespace, so punctuation is deleted rather than replaced (`"H. G. Wells"` and `"H.G. Wells"`
+  become `h g wells` and `hg wells`), and the table has a unique index on
+  `(AuthorNameNormalized, Region)`, so two rows are schema-legal. Whether a second row actually
+  appears cannot be read from the source, because the upsert matches on author ASIN before it
+  compares names. It **reports, it does not judge**: one row or two is a product decision, and the
+  output is the observed rows with their normalized keys, ASINs, and whether an image survived.
+
+  The variant spelling is derived, never invented. It takes an author `corpus/corpus.json` already
+  credits with spaced initials and closes the spaces, so both spellings describe a real author in the
+  corpus. `--all` sweeps every such author, one container each, because a single name settles very
+  little: whether the spellings split turns on what Audible returns for that particular name.
+
+  Unlike the other runtime checks this one needs the container to reach Audible and Audnexus, since
+  the whole question is what they answer. A run that cannot reach them exits `2` rather than
+  reporting, because an empty table would otherwise read as "no duplicate".
 
 ### Supported API versions
 

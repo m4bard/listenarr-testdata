@@ -624,7 +624,11 @@ def main() -> int:
     args = ap.parse_args()
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-    library_root = args.manifest.parent
+    # Resolved, and --root-map's local side is resolved to match below. Comparing a relative
+    # manifest path against an absolute mapped path silently matches NOTHING, which does not look
+    # like a mistake: it looks like the scanner linked nothing at all. Both sides are made absolute
+    # so the two cannot disagree about the same directory.
+    library_root = args.manifest.parent.resolve()
 
     if args.snapshot:
         args.snapshot.write_text(json.dumps(snapshot(library_root), indent=2) + "\n")
@@ -650,7 +654,7 @@ def main() -> int:
         if "=" not in args.root_map:
             ap.error("--root-map must be REMOTE=LOCAL")
         remote, local = args.root_map.split("=", 1)
-        root_map = (remote, local)
+        root_map = (remote, str(pathlib.Path(local).resolve()))
 
     # JSON to stdout must be the ONLY thing on stdout, or a consumer cannot parse it.
     json_to_stdout = args.json == "-"

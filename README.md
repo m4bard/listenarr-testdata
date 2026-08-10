@@ -237,6 +237,7 @@ not lose the first-boot download race.
 ./tools/validate_import_destination.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_author_cache_variants.sh --all
 ./tools/validate_import_relisting.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/validate_root_folder_delete.sh --image ghcr.io/listenarrs/listenarr:canary
 ```
 
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
@@ -325,6 +326,22 @@ not lose the first-boot download race.
   The drop folder's file must be reported *before* the import or the run is inconclusive, and the
   library root's own tracked file is scanned as a control: if that comes back as unmatched, the path
   filter is broken generally and every other verdict in the run is unproven.
+
+- **`validate_root_folder_delete.sh`** (Listenarr#602) asks whether a root folder that owns no books
+  can be deleted. Deletion is gated on `HasAudiobooksUnderPathAsync`, which matches any `BasePath`
+  equal to the root or starting with it plus a separator, and `RootFolderService.CreateAsync` rejects
+  only an exact duplicate path. Nothing stops a root being created inside another root, and an outer
+  root then matches every book belonging to the inner one.
+
+  Three scenarios, each in its own container. `sibling` is the control and must pass: two roots that
+  do not nest, delete the one owning nothing. If that fails, deletion is broken for some wider reason
+  and the run refuses a verdict rather than crediting nesting. `nested-delete` is the reported case.
+  `nested-reassign` exercises the documented escape hatch, `?reassignTo=`, where the affected set
+  includes books already under the destination.
+
+  Be careful reading the reassign result. It rewrites the stored `BasePath` to a path that does not
+  exist, but the files stay on disk, stay tracked, and the book's status does not change, so nothing
+  is visibly broken at the time. The tool says so explicitly rather than calling it data loss.
 
 ### Supported API versions
 

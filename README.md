@@ -236,6 +236,7 @@ not lose the first-boot download race.
 ./tools/check_duplicate_detection.sh ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_import_destination.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_author_cache_variants.sh --all
+./tools/validate_import_relisting.sh --image ghcr.io/listenarrs/listenarr:canary
 ```
 
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
@@ -306,6 +307,24 @@ not lose the first-boot download race.
   Unlike the other runtime checks this one needs the container to reach Audible and Audnexus, since
   the whole question is what they answer. A run that cannot reach them exits `2` rather than
   reporting, because an empty table would otherwise read as "no duplicate".
+- **`validate_import_relisting.sh`** (Listenarr#616) imports a file and then asks whether that same
+  file is still offered as an unmatched candidate. Most of #616 is a product argument about whether
+  books that already have files belong in the list, and this stays out of it; there is a narrower
+  question underneath that is not a matter of taste. `UnmatchedScanBackgroundService` already filters
+  the walk against a set of tracked paths built from `AudiobookFiles` and `Audiobook.FilePath`, under
+  a comment reading "so that files already in the library are not reported as unmatched". That filter
+  compares paths, which is exact for a move but not for an import whose source survives.
+
+  Each action runs in its own container, because they differ in the way that matters: `copy` and
+  `hardlink/copy` leave the original file where it was while the database records the destination,
+  and `move` removes the original path entirely. `move` is included as the honest comparison rather
+  than as a pass: when it reports nothing afterwards that is absence, not filtering, and the run says
+  so instead of counting it.
+
+  Two guards, because "nothing was listed" is what both a working filter and a blind check produce.
+  The drop folder's file must be reported *before* the import or the run is inconclusive, and the
+  library root's own tracked file is scanned as a control: if that comes back as unmatched, the path
+  filter is broken generally and every other verdict in the run is unproven.
 
 ### Supported API versions
 

@@ -238,6 +238,7 @@ not lose the first-boot download race.
 ./tools/validate_author_cache_variants.sh --all
 ./tools/validate_import_relisting.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_root_folder_delete.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/validate_rename_hazards.sh --image ghcr.io/listenarrs/listenarr:canary
 ```
 
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
@@ -457,6 +458,13 @@ Most scan bugs leave a file unlinked, which is annoying. A rename bug destroys d
 
 .venv/bin/python tools/verify_scan.py --manifest ./build/hz/manifest.json --audit before.json
 ```
+
+**`tools/validate_rename_hazards.sh` drives that whole sequence in one command** against a real
+container, so the manual step in the middle is no longer manual: it snapshots, adds the books, scans
+so the hazard files are tracked, forces a relocation, **executes** the rename rather than previewing
+it, and audits. It reports how much it actually exercised alongside the verdict, because a clean
+audit is only worth the fraction that really moved, and two images can both come back clean while one
+relocated most of the corpus and the other a small slice of it.
 
 The audit asserts that **no file was lost and no path escaped the library root**. Files are tracked by content, not by name — a rename is precisely a change of name, so the question is not whether a given path still exists but whether every byte that was there still exists somewhere under the root.
 

@@ -52,6 +52,18 @@ REFUSED_RE = re.compile(
     r"ffprobe target is not a supported audio file:\s*(?P<name>\S+)")
 # The descriptor path is /proc/{pid}/fd/{fd}; sanitized for logging it is just the {fd}.
 BARE_DESCRIPTOR_RE = re.compile(r"^\d+$")
+# Every mode expects the file to be claimed, because the harness asserts what a correct scanner
+# should do rather than what this one does today. They differ in which mechanism is left to do it,
+# which is the whole reason for running more than one.
+EXPECTATIONS = {
+    "control": "claimed by path attribution, without the metadata pass being involved",
+    "fallback": "claimed by the embedded-metadata pass, nothing else can claim it",
+    "folder-mismatch": "claimed despite the folder no longer matching the record's title",
+    "file-mismatch": "claimed despite the filename no longer matching the title",
+    "both-mismatch": "claimed with neither folder nor filename matching, so only tags are left",
+}
+MODES = tuple(EXPECTATIONS)
+
 NO_FFPROBE = "No bundled ffprobe available"
 ENRICHMENT_CAUGHT = "Metadata enrichment failed for scan candidate"
 PROBE_RAN_RE = re.compile(r"ffprobe exit code (?P<code>-?\d+) for file (?P<file>\S+)")
@@ -180,11 +192,7 @@ def read_claims(db: pathlib.Path, book_id: str) -> tuple[int, int | None]:
 
 def render(report: FallbackReport) -> str:
     ev = report.evidence
-    if report.mode == "control":
-        expect = ("claimed by path attribution, without the metadata pass "
-                  "being involved")
-    else:
-        expect = "claimed by the embedded-metadata pass — nothing else can claim it"
+    expect = EXPECTATIONS.get(report.mode, "claimed")
 
     lines = [
         f"label      {report.label}",
@@ -231,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", required=True, type=pathlib.Path)
     parser.add_argument("--book-id", required=True)
     parser.add_argument("--asin", required=True)
-    parser.add_argument("--mode", required=True, choices=("fallback", "control"))
+    parser.add_argument("--mode", required=True, choices=MODES)
     parser.add_argument("--log", type=pathlib.Path,
                         help="container log capture for this scan")
     parser.add_argument("--label", default="metadata fallback")

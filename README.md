@@ -367,6 +367,28 @@ not lose the first-boot download race.
   diagnostic, since a refusal swallowed below the scan leaves a job that completes with no files
   and no recorded issue.
 
+  `--mode matrix` answers a different question: *which* construction starves path attribution in
+  the first place. Attribution has several ways to bite, so this breaks one agreement at a time
+  and measures each, using `tools/mismatch_mutate.py` to rename an already-generated library and
+  rewrite the manifest to match. Leaving the manifest describing the old layout would turn a
+  rename into a phantom scan shortfall.
+
+  ```
+  construction                                     canary f27c7989
+  control, everything agrees                       claimed
+  filename no longer matches the title             claimed
+  folder no longer matches the record's title      claimed
+  neither folder nor filename matches              UNCLAIMED, reached the tag pass
+  no author anywhere on the path                   UNCLAIMED, reached the tag pass
+  ```
+
+  The useful result is the pair of "claimed" rows in the middle. Breaking either agreement alone
+  is not enough, because the boundary search reads ancestor directories while a separate check
+  reads the filename, and each rescues the other. Two doors were found rather than one: every path
+  heuristic starved together, and no author context for any of them to stand on. Worth knowing
+  that the title-plus-series-number variant the scanner builds joins with a space, so it expects
+  `Title 7` and a folder reading `Title, Book 7` misses it on the literal word.
+
 ### Supported API versions
 
 The harness drives two Listenarr API shapes from one code path — current `canary` and the

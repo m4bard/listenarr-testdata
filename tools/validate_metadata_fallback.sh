@@ -79,8 +79,8 @@ done
 [ -n "$LABEL" ] || LABEL="$IMAGE"
 
 case "$MODE" in
-    fallback|control|both) ;;
-    *) echo "unknown --mode '$MODE' (fallback|control|both)" >&2; exit 2 ;;
+    fallback|control|both|folder-mismatch|file-mismatch|both-mismatch|matrix) ;;
+    *) echo "unknown --mode '$MODE' (control|fallback|both|folder-mismatch|file-mismatch|both-mismatch|matrix)" >&2; exit 2 ;;
 esac
 
 log() { printf '%s [fallback] %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -108,10 +108,34 @@ trap cleanup EXIT
 
 # Layout per mode. `title-only` puts the title in the folder and no author anywhere, which is what
 # starves every path heuristic; `listenarr-native` is the shape they were written for.
+#
+# The mismatch modes all start from `listenarr-native` and then break one agreement at a time, so
+# each names a different candidate door into the metadata pass rather than a different library.
 layout_for() {
     case "$1" in
         fallback) echo "title-only" ;;
-        control)  echo "listenarr-native" ;;
+        *)        echo "listenarr-native" ;;
+    esac
+}
+
+# Which agreement to break after generating, if any.
+mutation_for() {
+    case "$1" in
+        folder-mismatch) echo "folder" ;;
+        file-mismatch)   echo "file" ;;
+        both-mismatch)   echo "both" ;;
+        *)               echo "none" ;;
+    esac
+}
+
+# What the mode is asserting, for the report header.
+expectation_for() {
+    case "$1" in
+        control) echo "claimed by path attribution, without the metadata pass being involved" ;;
+        fallback) echo "claimed by the embedded-metadata pass, nothing else can claim it" ;;
+        folder-mismatch) echo "the folder no longer matches the record's title; does attribution still bite?" ;;
+        file-mismatch) echo "the filename no longer matches the title; does attribution still bite?" ;;
+        both-mismatch) echo "neither folder nor filename matches; only the metadata pass is left" ;;
     esac
 }
 
@@ -142,6 +166,14 @@ print(sum(1 for e in man["entries"]
 COUNTEOF
 )
     [ "${files:-0}" -ge 1 ] || { log "[${mode}] ${ASIN} generated no files"; return 2; }
+
+    local mutation; mutation="$(mutation_for "$mode")"
+    if [ "$mutation" != "none" ]; then
+        log "[${mode}] breaking the ${mutation} agreement"
+        "$PY" "${ROOT}/tools/mismatch_mutate.py" \
+            --library "$library" --asin "$ASIN" --mutation "$mutation" \
+            || { log "[${mode}] mutation failed"; return 2; }
+    fi
 
     # The metadata pass only means anything if ffprobe is actually present. Without it the server
     # returns null before reaching the probe and an unclaimed file would prove nothing.
@@ -221,6 +253,43 @@ ADDEOF
 
 CONTROL_RC=0
 FALLBACK_RC=0
+
+# The matrix answers "which construction starves path attribution" rather than asserting one.
+# Every mode still expects a claim, so a mode that comes back UNCLAIMED has found a door into the
+# metadata pass. The control runs first and must claim, or none of the rest means anything.
+if [ "$MODE" = "matrix" ]; then
+    MATRIX_MODES=(control file-mismatch folder-mismatch both-mismatch fallback)
+    declare -A MATRIX_RC=()
+    offset=0
+    for m in "${MATRIX_MODES[@]}"; do
+        echo
+        run_mode "$m" "$((PORT + offset))"
+        MATRIX_RC["$m"]=$?
+        offset=$((offset + 1))
+        if [ "$m" = "control" ] && [ "${MATRIX_RC[control]}" -ne 0 ]; then
+            echo
+            log "control did not claim its file. Nothing below it would mean anything, so stopping."
+            exit 2
+        fi
+    done
+
+    echo
+    echo "  construction                                    outcome"
+    echo "  ----------------------------------------------  ------------------------"
+    for m in "${MATRIX_MODES[@]}"; do
+        case "${MATRIX_RC[$m]}" in
+            0) verdict="claimed" ;;
+            1) verdict="UNCLAIMED (reached the tag pass)" ;;
+            *) verdict="inconclusive" ;;
+        esac
+        printf '  %-46s  %s\n' "$(expectation_for "$m" | cut -c1-46)" "$verdict"
+    done
+    echo
+    for m in "${MATRIX_MODES[@]}"; do
+        printf '  %-16s %s\n' "$m" "${MATRIX_RC[$m]}"
+    done
+    exit 0
+fi
 
 if [ "$MODE" = "control" ] || [ "$MODE" = "both" ]; then
     echo

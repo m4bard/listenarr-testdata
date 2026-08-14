@@ -239,6 +239,7 @@ not lose the first-boot download race.
 ./tools/validate_import_relisting.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_root_folder_delete.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_rename_hazards.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/validate_metadata_fallback.sh --image ghcr.io/listenarrs/listenarr:canary
 ```
 
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
@@ -343,6 +344,28 @@ not lose the first-boot download race.
   Be careful reading the reassign result. It rewrites the stored `BasePath` to a path that does not
   exist, but the files stay on disk, stay tracked, and the book's status does not change, so nothing
   is visibly broken at the time. The tool says so explicitly rather than calling it data loss.
+
+- **`validate_metadata_fallback.sh`** (Listenarr#818) asks whether a scan can still claim a file by
+  its embedded tags. A scan attributes by path first: an identifier in the path, a title-bearing
+  folder with author context around it, or a filename matching the title. When none of those bite,
+  a second pass opens each remaining candidate, reads its tags, and claims it if they name the
+  book. For a correctly tagged file in a folder shape the path heuristics do not recognise, that
+  pass is the only route to being claimed at all.
+
+  Two modes, each in its own container, because the registration registry remembers files it has
+  already registered. `fallback` puts the book in a folder carrying its title and nothing else, so
+  no author context exists anywhere on the path and every path heuristic declines. `control` is the
+  same book in a layout the heuristics do handle, and it **must** be claimed: "nothing was claimed"
+  is also what a bad image, an unmounted library or a scan request that never landed produces, so
+  `--mode both` refuses to report a fallback verdict unless the control claimed its file first.
+
+  The report keeps the claim and the recorded size apart. A row can exist and still carry a length
+  read from somewhere other than the file, and folding the two together would let either hide the
+  other. When the probe refuses a target the tool prints the name it refused: a bare integer there
+  is a descriptor number rather than a filename, which says the two halves of the metadata source
+  were collapsed onto one path. It also reports whether the refusal reached the scan as a
+  diagnostic, since a refusal swallowed below the scan leaves a job that completes with no files
+  and no recorded issue.
 
 ### Supported API versions
 

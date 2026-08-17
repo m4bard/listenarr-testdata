@@ -110,6 +110,34 @@ LAYOUTS: list[Layout] = [
         note="Loose files at the library root, no containing folder at all.",
     ),
     Layout(
+        key="audiobookshelf-asin",
+        folder="{author}/{series}/{series_position} - {title} [{asin}]",
+        filename="{title}",
+        note="The shape AudioBookShelf's own scanner reads best: its `getBookDataFromDir` takes "
+             "the last three path segments as author, series and title, then strips an ASIN, a "
+             "narrator, a series sequence and a published year out of the title segment in that "
+             "order. The bracketed ASIN is the valuable part, because a parsed ASIN becomes the "
+             "search key for its matcher rather than a fuzzy title lookup.\n"
+             "\n"
+             "Two constraints its regexes enforce, both of which fail SILENTLY and corrupt the "
+             "title rather than erroring. The ASIN must be exactly ten uppercase alphanumerics "
+             "with a space or string boundary either side, so a lowercased one is left glued to "
+             "the title. And the sequence is matched as digits with an optional two-decimal part, "
+             "so a non-numeric position like '1a' stays in the title and the sequence is lost.",
+        # getBookDataFromDir, getASIN, getSequence:
+        source="https://github.com/advplyr/audiobookshelf/blob/master/server/utils/scandir.js",
+    ),
+    Layout(
+        key="audiobookshelf-asin-flat",
+        folder="{author}/{title} [{asin}]",
+        filename="{title}",
+        note="The standalone half of the AudioBookShelf recommendation, for books with no series. "
+             "Its parser only treats a directory as a series when at least two segments remain "
+             "above the title, so this correctly yields a null series rather than mistaking the "
+             "author folder for one.",
+        source="https://github.com/advplyr/audiobookshelf/blob/master/server/utils/scandir.js",
+    ),
+    Layout(
         key="title-only",
         folder="{title}",
         filename="{title}",

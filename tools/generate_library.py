@@ -803,6 +803,7 @@ def pattern_values(meta: Meta) -> dict[str, str]:
         "title": meta.title,
         "series": meta.series or "",
         "series_position": meta.series_position or "",
+        "asin": meta.asin or "",
         "year": meta.year or "",
     }
 

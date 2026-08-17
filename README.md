@@ -389,6 +389,43 @@ not lose the first-boot download race.
   that the title-plus-series-number variant the scanner builds joins with a space, so it expects
   `Title 7` and a folder reading `Title, Book 7` misses it on the literal word.
 
+- **`validate_abs_layout.sh`** asks whether a Listenarr-shaped library survives **Audiobookshelf's
+  own parser**. Listenarr can already write the shape ABS reads best with no code change, because
+  `{Asin}` is an existing naming token, which makes "point Listenarr at Audiobookshelf" a
+  documentation task. Documentation nobody checks rots, so this generates real libraries in the
+  recommended shapes and runs ABS's real `getBookDataFromDir` over them, comparing against the
+  manifest. Needs `--abs-repo` pointing at an Audiobookshelf checkout and `node` on `PATH`.
+
+  ```bash
+  git clone --depth 1 https://github.com/advplyr/audiobookshelf ../audiobookshelf
+  ./tools/validate_abs_layout.sh --abs-repo ../audiobookshelf
+  ```
+
+  Nothing here reimplements a regex. `abs_parse_bridge.js` requires ABS's real modules out of that
+  checkout, so when ABS changes its rules this check changes its answer instead of agreeing with a
+  stale copy. Any bare package that will not resolve is stubbed with an empty object and reported,
+  which keeps you from having to install ABS's whole dependency tree; relative requires are never
+  stubbed, so the code under test is genuinely theirs.
+
+  Three cases, and the control is the point. `series` and `flat` are the recommendation and must
+  survive; `control` is Listenarr's own default layout, which carries no ASIN, and it **must
+  fail**. A conformance check that passes everything is indistinguishable from one that checks
+  nothing, so the run refuses a verdict if the control passes.
+
+  Both ways this arrangement breaks in the wild are silent, which is why it is worth checking at
+  all. An ASIN that is not exactly ten uppercase alphanumerics is not ignored, it stays glued to
+  the title, so the book ends up titled `Some Book [b0015t963c]`. A non-numeric series position
+  does the same and loses the sequence, and that is ordinary data rather than anyone's mistake.
+  `--ignore` narrows the comparison for a layout that genuinely does not encode a field, stated per
+  run so a layout cannot quietly excuse itself; a test asserts no shipped case ignores the ASIN.
+
+  `--sidecar LABEL=PATH` also runs a `metadata.json` through ABS's schema validator. That matters
+  for one specific reason: ABS's folder parser accepts only digits for a sequence while its sidecar
+  parser accepts any non-whitespace token, so the sidecar is the only channel that can carry a
+  position the folder cannot express. It also catches the trap in that file, which is that a
+  structured `{"name":…,"sequence":…}` object is **accepted and then silently discarded**, where
+  the string form `"Name #1a"` survives.
+
 ### Supported API versions
 
 The harness drives two Listenarr API shapes from one code path — current `canary` and the

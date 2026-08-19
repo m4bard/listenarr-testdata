@@ -233,6 +233,7 @@ not lose the first-boot download race.
 ./tools/validate_reported_size.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_import_action.sh localhost/listenarr-vet:abc1234 --action symlink
 ./tools/validate_sidecar_rename.sh localhost/listenarr-vet:abc1234
+./tools/validate_companion_import.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/check_duplicate_detection.sh ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_import_destination.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_author_cache_variants.sh --all
@@ -266,6 +267,30 @@ not lose the first-boot download race.
   looks at the filesystem to see whether the companions followed the audio. It asserts the correct
   behaviour rather than the current one, so it fails today and becomes a regression guard once the
   rename sweeps companion files. Takes an image and an optional port.
+- **`validate_companion_import.sh`** asks the neighbouring question on the import path: a manual
+  import with `includeCompanionFiles` set is supposed to bring the non-audio files sitting beside the
+  audio along with it. The tool drops `.nfo`, `.opf`, `.txt` and `metadata.json` next to the source
+  audio, imports, and reads the destination folder the API itself named. `.nfo` and `.opf` carry the
+  verdict because Listenarr generates neither, so their absence cannot be explained away by a
+  regenerated replacement.
+
+  Three named controls, since a companion check is unusually easy to write so that it cannot fail.
+  The audio file **must arrive**, or the tool is looking in the wrong folder and reports nothing. A
+  blacklisted `decoy.bak` **must not arrive**, or the inspection is not telling files apart at all.
+  And `metadata.json` is judged by provenance rather than existence: every file the tool writes
+  carries a per-run sentinel string, so the run computes both the naive verdict ("is there a
+  `metadata.json` at the destination?") and the provenance verdict ("is it the one we wrote?") and
+  prints them side by side. The bug report this was written against claimed Listenarr regenerates its
+  own `metadata.json`, which would make the naive verdict pass on a build that imported nothing.
+  Canary contains no `metadata.json` writer at all, so that masking has never actually occurred, and
+  the run says so in as many words instead of implying a control fired that did not. It is kept
+  because it costs one `stat` and it is what stops the check quietly starting to pass if a writer is
+  added later.
+
+  `--case` picks whether the source folder sits outside every configured root folder or inside one,
+  and it runs both by default, because the symptom alone cannot say whether the source's placement
+  is what decides the outcome. Exit `0` the companions came across, `1` they were dropped, `2` a
+  control did not hold.
 - **`check_duplicate_detection.sh`** puts both sides of all four twin-ASIN pairs into a running
   instance and asks the duplicate endpoint what it sees. It **reports, it does not judge**: what
   counts as a duplicate is a product decision, and the reason to run it is to get an answer against

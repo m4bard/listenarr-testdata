@@ -240,6 +240,7 @@ not lose the first-boot download race.
 ./tools/validate_root_folder_delete.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_rename_hazards.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_metadata_fallback.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/validate_queue_poll_resilience.sh --image ghcr.io/listenarrs/listenarr:canary
 ```
 
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
@@ -388,6 +389,27 @@ not lose the first-boot download race.
   heuristic starved together, and no author context for any of them to stand on. Worth knowing
   that the title-plus-series-number variant the scanner builds joins with a space, so it expects
   `Title 7` and a folder reading `Title, Book 7` misses it on the literal word.
+
+- **`validate_queue_poll_resilience.sh`** asks what one unreadable field in a download client's
+  queue response costs. Every other check here drives the library side, where the input is files we
+  generate; this one is triggered by a *response*, so what has to be generated is the client.
+  `tools/qbittorrent_stub.py` serves the handful of qBittorrent WebUI routes the adapter actually
+  calls, with one torrent at a chosen position carrying `downloaded` in a JSON token form the
+  mapper's typed accessors do not expect.
+
+  Three outcomes are worth telling apart, and they are very different to operate. The whole poll can
+  fail, which marks the client unavailable and is at least visible. One torrent can be skipped,
+  which is the tolerable answer. Or everything from the bad torrent onward can vanish while the poll
+  still reports itself live and healthy, which is invisible to everything downstream. The check
+  reads both the adapter's own count and the queue API's health flags so it can name which of the
+  three happened rather than only noticing that a number got smaller.
+
+  `allWellFormed` is the control and it **must** report all N. It serves the same torrents with
+  nothing wrong with them, so if Listenarr does not return all of them the check is measuring the
+  display filter or the settings write instead, and it exits `3` calling itself broken rather than
+  reporting a bug. The malformed cases assert the *fixed* behaviour, so they fail on a build with
+  the defect. Both token forms are covered: a fractional number raises `FormatException`, a quoted
+  one raises `InvalidOperationException`, and a fix handling only the first would pass half the run.
 
 - **`validate_abs_layout.sh`** asks whether a Listenarr-shaped library survives **Audiobookshelf's
   own parser**. Listenarr can already write the shape ABS reads best with no code change, because

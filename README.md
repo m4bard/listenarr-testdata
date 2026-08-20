@@ -232,6 +232,7 @@ not lose the first-boot download race.
 ```bash
 ./tools/validate_reported_size.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_import_action.sh localhost/listenarr-vet:abc1234 --action symlink
+./tools/validate_asin_tag_embed.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_sidecar_rename.sh localhost/listenarr-vet:abc1234
 ./tools/validate_companion_import.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/check_duplicate_detection.sh ghcr.io/listenarrs/listenarr:canary
@@ -262,6 +263,22 @@ not lose the first-boot download race.
   returns `EXDEV`. `--action symlink` tests the symlink action instead, which is expected to work
   across mounts as well. Every case also asserts the source survived, since an import that removes
   the source is data loss whichever action was asked for.
+- **`validate_asin_tag_embed.sh`** asks whether an imported file ends up carrying its ASIN in its
+  own embedded tags. Listenarr attempts to write the identifier into the file after a successful
+  import so the file keeps it wherever it goes next, and that step is deliberately non-fatal: it
+  catches, logs a warning, and the import reports success either way. A step that cannot fail the
+  operation it belongs to is a step nobody notices has stopped working, and nothing upstream
+  exercises it against a real file. The controller tests mock the writer away entirely, and the
+  writer's own test file holds a single case, for the scan-only lease, which asserts that it
+  returns early **without** opening a stream. So the one branch under test is the one where it is
+  supposed to do nothing. The tool imports a generated file
+  that carries no ASIN and then reads the destination's tags on the host, looking in the three
+  places the writer puts one. Two gates run before the import and it refuses a verdict without
+  both, because the reader has to be shown capable of both answers in the same run: a copy of the
+  same file with the atom stamped on by hand must read `tagged`, and the file as it goes in must
+  read `untagged`. The server's own log lines are read as corroboration, and if the writer logged
+  neither success nor failure the enrichment step never ran and the result is inconclusive rather
+  than a finding. Exit `0` the ASIN was embedded, `1` it was not, `2` the run could not be judged.
 - **`validate_sidecar_rename.sh`** (Listenarr#577) imports a book's audio, drops `cover.jpg` and
   `metadata.json` beside it, changes the naming pattern so the book must relocate, renames, and then
   looks at the filesystem to see whether the companions followed the audio. It asserts the correct

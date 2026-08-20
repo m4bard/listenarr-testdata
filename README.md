@@ -186,6 +186,7 @@ hand if you prefer.
 
 `--tool attribution` swaps the benchmark for `validate_scan_attribution.sh`, which answers a
 different question: of the files a scan linked to a book, how many really belong to it?
+`--tool grouping` runs `validate_chapter_grouping.sh` against the built image instead.
 
 ```bash
 ./tools/vet-against.sh \
@@ -242,9 +243,21 @@ not lose the first-boot download race.
 ./tools/validate_root_folder_delete.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_rename_hazards.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_metadata_fallback.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/validate_chapter_grouping.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_queue_poll_resilience.sh --image ghcr.io/listenarrs/listenarr:canary
 ```
 
+- **`validate_chapter_grouping.sh`** asks whether a chapter-per-file book comes back from Library
+  Import as one scan item or as one item per file. It writes the same book into nine folders that
+  differ in only two ways, the filename convention and what the embedded title tags say, then runs
+  `scan-unmatched` and counts the items per folder. `Title - Part 01.mp3` is the control: it is
+  already handled, so it has to group, and if it does not then the run is measuring "multi-file
+  books never group here" and the verdict is inconclusive rather than a pass. Coverage is checked
+  before grouping for the same reason, since a scan that indexed nothing looks exactly like a scan
+  that grouped nothing when all you have is an item count. The tag axis is there because it decides
+  the answer: filenames are grouped first and embedded tags are only consulted when that produced
+  more than one group, and the value compared is the `album` tag rather than `title`. Exit `0` every
+  folder grouped, `1` one did not, `2` inconclusive.
 - **`validate_reported_size.sh`** (Listenarr#542) generates a book that has many files, scans it,
   and compares three numbers that are easy to conflate: the real bytes on disk summed from the
   manifest, the per-file sizes the library recorded, and the single total it shows for the book.

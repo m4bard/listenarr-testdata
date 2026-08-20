@@ -34,6 +34,8 @@ vet-against.sh — build a Listenarr branch and run the harness against it.
                      benchmark   — time a scan (tools/benchmark_scan.sh)
                      attribution — show which files a scan claims, and whose they
                                    really are (tools/validate_scan_attribution.sh)
+                     grouping    — count the scan items a chapter-per-file book
+                                   produces (tools/validate_chapter_grouping.sh)
   --dry-run        print the clone/build/run plan and exit; touch nothing
   --help           this help
 
@@ -61,7 +63,8 @@ done
 case "$TOOL" in
     benchmark)   RUNNER="${ROOT}/tools/benchmark_scan.sh" ;;
     attribution) RUNNER="${ROOT}/tools/validate_scan_attribution.sh" ;;
-    *) die "unknown --tool '${TOOL}' (expected: benchmark, attribution)" ;;
+    grouping)    RUNNER="${ROOT}/tools/validate_chapter_grouping.sh" ;;
+    *) die "unknown --tool '${TOOL}' (expected: benchmark, attribution, grouping)" ;;
 esac
 command -v git >/dev/null 2>&1 || die "git is required (Ubuntu: sudo apt install git)"
 if command -v podman >/dev/null 2>&1; then

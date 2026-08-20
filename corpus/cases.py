@@ -276,6 +276,23 @@ FILE_STRUCTURES: list[FileStructure] = [
         parts=40,
     ),
     FileStructure(
+        key="paren-index",
+        note="One file per chapter, indexed with a bare '(N)' suffix: 'Title (1).mp3', "
+             "'Title (2).mp3'. A very common output of bulk rippers and of any tool that "
+             "de-duplicates filenames the way a browser or a file manager does. Nothing in "
+             "the name says whether N counts chapters of one book or entries in a series.",
+        files=["{title} ({n}).mp3"],
+        parts=6,
+    ),
+    FileStructure(
+        key="n-of-m",
+        note="One file per chapter, indexed as 'N of M': 'Title 001 of 006.mp3'. Unlike "
+             "'(N)' this one carries its own total, so the name itself says the files are "
+             "parts of a set rather than separate works.",
+        files=["{title} {n:03d} of {parts:03d}.mp3"],
+        parts=6,
+    ),
+    FileStructure(
         key="nested-single",
         note="A single file buried one level deeper than expected (e.g. in an "
              "'Audio' or 'MP3' subfolder).",

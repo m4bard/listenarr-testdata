@@ -39,6 +39,7 @@ import sys
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from dataclasses import replace as dataclass_replace
 from typing import Any, ClassVar
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -814,7 +815,7 @@ def files_for(structure: cases.FileStructure, meta: Meta) -> list[tuple[str, int
     safe_title = posix_component(meta.title)
     for n in range(1, structure.parts + 1):
         for template in structure.files:
-            rel = template.format(title=safe_title, n=n)
+            rel = template.format(title=safe_title, n=n, parts=structure.parts)
             segments = rel.split("/")
             rendered = [posix_component(p) for p in segments[:-1]] + [posix_filename(segments[-1])]
             out.append(("/".join(rendered), n))
@@ -885,12 +886,27 @@ def generate(
     only_asins: list[str] | None = None,
     only_tags: list[str] | None = None,
     ffmpeg: str = "ffmpeg",
+    structure_override: str | None = None,
+    tag_state_override: str | None = None,
+    chapter_titles: bool = False,
 ) -> dict[str, Any]:
     """Generate the library for one scenario and return its manifest.
 
     layout_override, when given, forces every book into that one on-disk layout,
     ignoring the scenario's own layout mix. This is what --layout uses to produce
     a library in a single tool's convention.
+
+    structure_override and tag_state_override do the same for the other two axes:
+    they pin how a book maps to files, and what its embedded tags say. A scenario
+    normally cycles both across the corpus, which is what you want for coverage and
+    exactly what you do not want when isolating one variable. Pinning them makes an
+    A/B possible: the same book, the same layout, one axis changed.
+
+    chapter_titles writes a per-file title tag ("Chapter 1", "Chapter 2", ...) instead of
+    the book's title, for any structure that splits a book across several files. That is
+    what most chapter-split rips carry, and it is a third state distinct from both correct
+    tags and no tags: the tag is present, accurate about the chapter, and useless for
+    deciding which files are the same book.
 
     only_asins / only_tags narrow the corpus to specific books (by ASIN) or to books
     carrying any of the given failure-mode tags, so a reported bug becomes a minimal
@@ -912,10 +928,14 @@ def generate(
 
     layout_keys = [layout_override] if layout_override else list(scenario.layouts)
     layouts = [cases.LAYOUTS_BY_KEY[k] for k in layout_keys]
-    tag_states = list(scenario.tag_states)
-    weights: dict[str, float] = scenario.extras.get("tag_state_weights", {})
-    structures = [cases.STRUCTURES_BY_KEY[k]
-                  for k in scenario.extras.get("structures", ["single"])]
+    tag_states = [tag_state_override] if tag_state_override else list(scenario.tag_states)
+    # A pinned tag state overrides the scenario's weighted spread as well; leaving the
+    # weights in place would let the RNG pick a state the caller just excluded.
+    weights: dict[str, float] = ({} if tag_state_override
+                                 else scenario.extras.get("tag_state_weights", {}))
+    structure_keys = ([structure_override] if structure_override
+                      else scenario.extras.get("structures", ["single"]))
+    structures = [cases.STRUCTURES_BY_KEY[k] for k in structure_keys]
     dialects: list[str] = scenario.extras.get("dialects", [])
     hazards: list[str] = scenario.extras.get("hazards", [])
     clutter: list[str] = scenario.extras.get("clutter", [])
@@ -1024,7 +1044,15 @@ def generate(
 
                     written_tags: dict[str, str] = {}
                     if tag_meta is not None:
-                        written_tags = write_tags(dest, tag_meta, this_dialect)
+                        file_meta = tag_meta
+                        # A per-chapter title tag is what most chapter-split rips actually
+                        # carry: the tag names the CHAPTER, not the book. It is neither a
+                        # correct book tag nor a missing one, and code that groups files by
+                        # comparing their titles sees a different answer in each file.
+                        if chapter_titles and structure.parts > 1:
+                            file_meta = dataclass_replace(
+                                tag_meta, title=f"Chapter {part}")
+                        written_tags = write_tags(dest, file_meta, this_dialect)
 
                     entries.append({
                         "path": str(dest.relative_to(out)),
@@ -1093,7 +1121,20 @@ def main() -> int:
     ap.add_argument("--tag", action="append", metavar="TAG",
                     help="restrict to books carrying any of these failure-mode tag(s); "
                          "repeatable or comma-separated")
+    ap.add_argument("--structure", help="force a single file structure (how one book maps "
+                                        "to files), overriding the scenario's mix; see "
+                                        "--list-structures")
+    ap.add_argument("--tag-state", help="force a single embedded-tag state, overriding the "
+                                        "scenario's mix; see --list-tag-states")
+    ap.add_argument("--chapter-titles", action="store_true",
+                    help="tag each file of a multi-file book with its CHAPTER title "
+                         "('Chapter 1', 'Chapter 2', ...) instead of the book title, the "
+                         "way most chapter-split rips are tagged")
     ap.add_argument("--list", action="store_true", help="list the scenarios and exit")
+    ap.add_argument("--list-structures", action="store_true",
+                    help="list the file structures and exit")
+    ap.add_argument("--list-tag-states", action="store_true",
+                    help="list the embedded-tag states and exit")
     ap.add_argument("--list-layouts", action="store_true", help="list the layouts and exit")
     ap.add_argument("--force", action="store_true", help="overwrite a non-empty --out")
     ap.add_argument("--ffmpeg-source", choices=("jellyfin", "johnvansickle", "system"),
@@ -1116,6 +1157,23 @@ def main() -> int:
             print(f"{alias:24} -> {target} (alias)")
         return 0
 
+    if args.list_structures:
+        for structure in cases.FILE_STRUCTURES:
+            print(f"{structure.key:16} {structure.parts:>3} part(s)  {structure.files[0]}")
+        return 0
+
+    if args.list_tag_states:
+        for state in cases.TAG_STATES:
+            print(f"{state.key:24} {state.expect}")
+        return 0
+
+    if args.structure and args.structure not in cases.STRUCTURES_BY_KEY:
+        ap.error(f"unknown structure '{args.structure}'. Known: "
+                 f"{', '.join(cases.STRUCTURES_BY_KEY)}")
+    if args.tag_state and args.tag_state not in cases.TAG_STATES_BY_KEY:
+        ap.error(f"unknown tag state '{args.tag_state}'. Known: "
+                 f"{', '.join(cases.TAG_STATES_BY_KEY)}")
+
     # Resolve a friendly alias (e.g. `listenarr`) to its canonical layout key.
     layout_key = cases.resolve_layout(args.layout) if args.layout else None
     if args.layout and layout_key is None:
@@ -1131,7 +1189,8 @@ def main() -> int:
     only_tags = split_repeatable(args.tag)
 
     # --layout / --only-asin / --tag alone still need a scenario; default to the clean adoption one.
-    narrowed = bool(args.layout or only_asins or only_tags)
+    narrowed = bool(args.layout or only_asins or only_tags or args.structure
+                    or args.tag_state or args.chapter_titles)
     scenario_key = args.scenario or ("existing-library-adoption" if narrowed else None)
     if not scenario_key or not args.out:
         ap.error("--scenario and --out are required (or --layout, --list, --list-layouts)")
@@ -1156,7 +1215,10 @@ def main() -> int:
         ffmpeg = str(ffmpeg_harness.provision("ffmpeg", source=args.ffmpeg_source))
 
     manifest = generate(scenario, args.out, args.seed, args.limit, layout_key,
-                        only_asins=only_asins, only_tags=only_tags, ffmpeg=ffmpeg)
+                        only_asins=only_asins, only_tags=only_tags, ffmpeg=ffmpeg,
+                        structure_override=args.structure,
+                        tag_state_override=args.tag_state,
+                        chapter_titles=args.chapter_titles)
     print(f"scenario   {manifest['scenario']}")
     print(f"seed       {manifest['seed']}")
     print(f"books      {manifest['corpus_books']}")

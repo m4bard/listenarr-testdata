@@ -18,9 +18,21 @@
 #   symlink, either layout         -> a SYMLINK whose target resolves to the source. Unlike a
 #                                     hardlink this is expected to work across mounts as well, which
 #                                     is the whole point of the action (Listenarr#771).
+#   move, either layout            -> the file is RELOCATED: a plain file at the destination and
+#                                     nothing left at the source. rename() returns EXDEV across a
+#                                     mount boundary exactly as link() does, so this action needs a
+#                                     copy-then-unlink fallback for the separate-mount case in the
+#                                     same way hardlink/copy needs a copy fallback.
 #
-# Every case also asserts the SOURCE IS PRESERVED. An import that removes the source is data loss
-# whichever action was requested.
+# The source assertion is the one thing that is NOT uniform across actions, and getting it wrong
+# would invert the test. hardlink, copy and symlink must all PRESERVE the source, because an import
+# that removes it is data loss. A move must REMOVE it, because that is what the word means. So a
+# move that leaves the source behind has silently done a copy and doubled the library's size, and a
+# move that removes the source without producing a destination has destroyed the file.
+#
+# Move also needs a verdict for "nothing happened at all". A cross-device move with no fallback does
+# not report an error, it just never completes, so the destination simply never appears. Reading
+# that as an ordinary failure would miss it; it is reported here as `stalled`.
 #
 # A pinned ffprobe is provisioned up front (tools/ffprobe_provisioner.py) so manual-import's metadata
 # step does not hard-fail on the first-boot download race. Exits non-zero if any case fails.
@@ -31,20 +43,22 @@
 set -uo pipefail
 unset TMOUT
 
-IMAGE="${1:?usage: validate_import_action.sh <image> [--action hardlink/copy|symlink] [--port N]}"
+IMAGE="${1:?usage: validate_import_action.sh <image> [--action hardlink/copy|symlink|move] [--port N] [--settle N]}"
 shift
 ACTION="hardlink/copy"
 PORT=4620
+SETTLE=45          # seconds to wait for a destination to appear before calling it stalled
 while [ $# -gt 0 ]; do
     case "$1" in
         --action) ACTION="$2"; shift 2 ;;
         --port)   PORT="$2";   shift 2 ;;
+        --settle) SETTLE="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 case "$ACTION" in
-    hardlink/copy|symlink) ;;
-    *) echo "unknown --action '${ACTION}' (expected: hardlink/copy, symlink)" >&2; exit 2 ;;
+    hardlink/copy|symlink|move) ;;
+    *) echo "unknown --action '${ACTION}' (expected: hardlink/copy, symlink, move)" >&2; exit 2 ;;
 esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -101,7 +115,18 @@ print(json.dumps({"path": os.path.dirname(full), "action": os.environ["ACTION"],
 REQEOF
 )"
     curl -s -X POST "${api}/library/manual-import" "${auth[@]}" -d "$req" >/dev/null
-    sleep 5
+
+    # Wait for a destination to appear rather than sleeping a flat interval. A cross-device move
+    # with no fallback never errors and never finishes, so "nothing arrived" is a real outcome that
+    # has to be told apart from "not yet". The wait is bounded and the elapsed time is reported, so
+    # a stall is visible as a stall instead of looking like a slow machine.
+    local waited=0
+    while [ "$waited" -lt "$SETTLE" ]; do
+        [ -n "$(find "$hdestdir" \( -type f -o -type l \) -name '*.m4b' -print -quit 2>/dev/null)" ] && break
+        sleep 3; waited=$((waited + 3))
+    done
+    sleep 2   # let a late write settle before classifying
+    log "  waited ${waited}s for a destination"
 
     # Classify on the host. Symlinks are checked FIRST: stat follows a symlink, so a link pointing
     # at the source reports the source's own inode and would otherwise be read as a hardlink.
@@ -129,7 +154,34 @@ REQEOF
         log "  dest inode=${di} links=${dl} -> ${verdict}"
     done < <(find "$hdestdir" \( -type f -o -type l \) -name '*.m4b' -print0)
 
-    [ -e "$hsrc" ] && log "  source preserved: yes" || { fail "${name}: SOURCE REMOVED (data loss)"; return 1; }
+    # The source assertion is action-dependent, and inverting it is the easy way to write a test
+    # that passes on a broken move. Every other action must leave the source alone; a move must
+    # consume it.
+    if [ "$ACTION" = "move" ]; then
+        if [ -e "$hsrc" ]; then
+            if [ "$verdict" = "missing" ]; then
+                # Nothing arrived and the source is untouched. That is the cross-device stall:
+                # no destination, no error, no data lost, and no way for an operator to see it.
+                verdict=stalled
+                log "  no destination after ${waited}s and the source is untouched -> stalled"
+            else
+                # A destination exists but the source survives, so this duplicated the file
+                # instead of relocating it. Reported distinctly because it is not a stall and it
+                # quietly doubles what the library occupies.
+                verdict=copiedNotMoved
+                log "  destination exists but source survives -> copiedNotMoved"
+            fi
+        elif [ "$verdict" = "missing" ]; then
+            fail "${name}: SOURCE REMOVED AND NO DESTINATION WRITTEN (data loss)"
+            "$RUNTIME" logs "$container" 2>&1 | grep -iE "move|rename|EXDEV|cross|mutation" | tail -6
+            return 1
+        else
+            verdict=moved
+            log "  source consumed and destination written -> moved"
+        fi
+    else
+        [ -e "$hsrc" ] && log "  source preserved: yes" || { fail "${name}: SOURCE REMOVED (data loss)"; return 1; }
+    fi
 
     if [ "$verdict" != "$expect" ]; then
         fail "${name}: expected ${expect}, observed ${verdict}"
@@ -145,6 +197,13 @@ REQEOF
 if [ "$ACTION" = "symlink" ]; then
     EXPECT_SAME=symlink
     EXPECT_SEPARATE=symlink
+elif [ "$ACTION" = "move" ]; then
+    # A move is a move on either layout. Crossing a mount boundary changes how it must be
+    # implemented, not what the caller asked for: rename() fails with EXDEV and the action has to
+    # fall back to copy-then-unlink. Expecting anything other than `moved` for the separate-mount
+    # case would be encoding the bug as the specification.
+    EXPECT_SAME=moved
+    EXPECT_SEPARATE=moved
 else
     EXPECT_SAME=hardlink
     EXPECT_SEPARATE=copy
@@ -168,6 +227,9 @@ echo
 if [ "$RESULT" -eq 0 ]; then
     if [ "$ACTION" = "symlink" ]; then
         log "VALIDATION PASSED: symlink proven on one mount and across separate mounts."
+    elif [ "$ACTION" = "move" ]; then
+        log "VALIDATION PASSED: move relocated the file on one mount and across separate mounts,"
+        log "                   consuming the source in both and losing nothing."
     else
         log "VALIDATION PASSED: hardlink proven on same mount; copy-fallback proven across mounts."
     fi

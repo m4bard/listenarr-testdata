@@ -230,6 +230,22 @@ published tag. Each asserts a single behaviour end to end against a running cont
 timing or scoring a whole scan, and each provisions a pinned ffprobe first so the metadata step does
 not lose the first-boot download race.
 
+To answer "what did this release change?" rather than one question at a time, **`regression_sweep.sh`**
+runs a set of them against one image and tabulates the verdicts. Every check generates its own
+library, provisions its own config, and starts its own container on its own port, so nothing outside
+`build/` is touched and the run is repeatable by anyone with the repo.
+
+It reports the exit codes rather than summing them, because they are deliberately not uniform: `0`
+passed, `1` the behaviour under test is wrong, `2` the run could not be judged. **A `2` is not a
+pass**, and folding it into one is how a sweep starts lying about coverage. For the same reason its
+header names the checks it does *not* run and why, since one that quietly covers less than its name
+suggests is worse than one that covers little and admits it.
+
+```bash
+./tools/regression_sweep.sh --image ghcr.io/listenarrs/listenarr:canary
+./tools/regression_sweep.sh --image ghcr.io/listenarrs/listenarr:canary --only companion-import
+```
+
 ```bash
 ./tools/validate_reported_size.sh --image ghcr.io/listenarrs/listenarr:canary
 ./tools/validate_import_action.sh localhost/listenarr-vet:abc1234 --action symlink
@@ -274,8 +290,16 @@ not lose the first-boot download race.
   for all three and never exercises the cross-device fallback. Same mount should produce a shared
   inode with a link count of two or more; separate mounts must fall back to a copy, because `link()`
   returns `EXDEV`. `--action symlink` tests the symlink action instead, which is expected to work
-  across mounts as well. Every case also asserts the source survived, since an import that removes
-  the source is data loss whichever action was asked for.
+  across mounts as well, and `--action move` tests relocation, where `rename()` returns `EXDEV`
+  across a mount boundary exactly as `link()` does.
+
+  The assertion about the source is the one thing that is **not** uniform, and inverting it by
+  accident would turn the check inside out. hardlink, symlink and copy must all leave the source
+  in place, because an import that removes it is data loss. A move must remove it, because that is
+  what the word means: a move that leaves the source behind has silently done a copy and doubled
+  the library, and a move that removes the source without producing a destination has destroyed the
+  file. Move needs a third verdict too, since a cross-device move with no fallback does not fail,
+  it simply never completes, so that is reported as `stalled` rather than as an ordinary failure.
 - **`validate_asin_tag_embed.sh`** asks whether an imported file ends up carrying its ASIN in its
   own embedded tags. Listenarr attempts to write the identifier into the file after a successful
   import so the file keeps it wherever it goes next, and that step is deliberately non-fatal: it

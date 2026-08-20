@@ -179,6 +179,34 @@ flag it doesn't recognise is forwarded verbatim to whichever tool `--tool` selec
 default is `benchmark_scan.sh` — `--layout`, `--scenario`, `--books`, `--no-basepath`, `--keep`.
 Pass `--dry-run` to print the plan without touching anything, or `--repo URL` to build a fork.
 
+### Does every patch branch still build, and does its test project?
+
+**`verify_patch_branches.sh`** is the odd one out in this repo: it generates no library and touches
+no container. It takes a Listenarr checkout, walks its worktrees, and reports for each branch
+whether the solution builds, whether the **test project** builds, and whether the suite passes,
+plus `vue-tsc` and vitest for branches touching `fe/`.
+
+```bash
+./tools/verify_patch_branches.sh --repo /path/to/a/listenarr-clone
+./tools/verify_patch_branches.sh --repo /path/to/clone --only bug12
+```
+
+The two builds are reported separately because they fail separately, and that is the whole reason
+this exists. Adding a required parameter to a method with call sites under `tests/` produces an
+image that builds, starts and passes every runtime check here, while `dotnet test` refuses to
+compile. A container build publishes; it never compiles tests, so it cannot notice. That reached a
+finished branch once, which is once more than it should have. The summary calls that case
+`NOBUILD` rather than folding it in with an ordinary failure.
+
+It runs a baseline commit through the same lanes, because a failure count means nothing without the
+count without the patch, and a lane it cannot run reports `SKIP` and never a pass: an absent
+`node_modules` is a missing prerequisite, not a green frontend.
+
+A suite failure is re-run in isolation before it is called one. This suite contains wall-clock
+guardrail tests, and one of them came in at 1021ms against a 1000ms threshold on a loaded machine
+and passed at 272ms alone. Anything that passes when re-run by itself is reported as `flaky`, so a
+number that moved because the box was busy does not read as a regression.
+
 Under the hood it is just clone → `podman build` → `benchmark_scan.sh --image …`; run those by
 hand if you prefer.
 

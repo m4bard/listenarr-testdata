@@ -12,7 +12,9 @@ ASIN drifting from one to the other would still be accepted.
 This is a ratchet, not a clean bill of health. The seeds that are ambiguous today are listed and
 frozen; a new one cannot be added, and a listed one that gets fixed has to be removed from the
 list. Editions of the *same* work sharing a fragment are fine and are not counted, since the drift
-worth catching is an ASIN resolving to a different work.
+worth catching is an ASIN resolving to a different work. `same_work` below is what decides that,
+and it is written to keep flagging two different novels by one author whose titles happen to
+overlap.
 """
 from __future__ import annotations
 
@@ -30,49 +32,59 @@ import build_corpus
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # Measured against the committed corpus, last narrowed 2026-08-24. Shrinking this list is the
-# point of having it; growing it is a regression. Two rounds of fixes have been done: twenty
+# point of having it; growing it is a regression. Three rounds of fixes have been done: twenty
 # series cases got a fragment naming the specific work, then sixteen of the empty-fragment
-# language and edition seeds got one too, which is why several non-English seeds that used to
-# expect nothing now expect a short native fragment (Vingt mille lieues, Verwandlung,
-# Dornroeschen).
+# language and edition seeds got one too, and then the last five seeds expecting nothing got
+# their native title, which `build_corpus.check_fragment` now requires of every seed.
 #
-# What is left is three kinds of case, none of them fixable by picking a better fragment:
-#
-#   1. A title that is a strict substring of another's, so nothing matching the shorter one can
-#      fail to match the longer: Pellucidar inside Tanar of Pellucidar, Faust inside Faust I,
-#      War and Peace inside War and Peace (Russian Edition).
-#   2. Two editions of one work whose titles differ only by an edition marker, where the pair
-#      now collides with each other and with nothing else. Separating them is a decision about
-#      whether an edition label belongs in a fragment at all, not a missing fragment.
-#   3. The five seeds whose author and title are both non-Latin, where the only specific value
-#      available is the native string and lifting it out of the API response would make the
-#      expectation a copy of the answer.
+# The edition variants left the list by a different route: they were never really ambiguous,
+# and `same_work` below now says so. What survives is one kind of case, and no fragment can
+# fix it. A title that is a strict substring of another's leaves nothing to match the shorter
+# without also matching the longer: Pellucidar inside Tanar of Pellucidar, Faust inside
+# Faust I. Separating those needs an exact comparison, which was measured and rejected.
 KNOWN_AMBIGUOUS_SEEDS: frozenset[str] = frozenset({
-    # 1. strict-substring titles
-    "B002V0PVJC",
-    "B002V1OVFQ",
-    "B00769TAK4",
-    "B00APWL9E4",
-    "B00EOO99WS",
-    "B00JQEQFL4",
-    # 2. edition variants of one work, colliding only with their own sibling
-    "B00BYIJW6A",
-    "B006GDCIY6",
-    "B01AGYIKG0",
-    "B01MU7YH84",
-    "B076PQXBV7",
-    "B07RGRBKS5",
-    # 3. no Latin fragment to give
-    "B08BTM5TDG",
-    "B08BTZVGS8",
-    "B08BV2RNS9",
-    "B0B5Z12CCM",
-    "B0CTK91XJ6",
+    "B002V1OVFQ",  # Pellucidar, inside Tanar of Pellucidar
+    "B00769TAK4",  # Faust, inside Faust I and Faust I + II
+    "B00APWL9E4",  # Faust I, inside Faust I + II
+    "B00EOO99WS",  # Faust
+    "B00JQEQFL4",  # Faust
 })
+
+# Text a retailer hangs off a title to mark one edition of it: "(AmazonClassics Edition)",
+# "(Russian Edition)", "[The Divine Comedy]". Both the label and the bracketing are the
+# retailer's, which is exactly why writing one into a seed fragment is a bad idea.
+EDITION_DECORATION = re.compile(r"[(\[][^)\]]*[)\]]")
+LEADING_ARTICLE = re.compile(r"^(the|a|an)\s+")
 
 
 def normalize(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").strip()).casefold()
+
+
+def work_key(title: str) -> str:
+    """A title with the retailer's edition decoration and a leading article taken off."""
+    return LEADING_ARTICLE.sub("", normalize(EDITION_DECORATION.sub(" ", title or "")))
+
+
+def same_work(one: dict, other: dict) -> bool:
+    """Are these two books the same work, differing only in which edition of it they are?
+
+    The docstring at the top of this module says editions of one work sharing a fragment are
+    fine, and this is what decides that. Two conditions, both required: the books share an
+    author, and their titles agree once an edition label and a leading article come off. So
+    `War and Peace` and `War and Peace (Russian Edition)` are one work, and `Metamorphosis`
+    and `The Metamorphosis` are one work.
+
+    The rule deliberately does NOT say "same author, and one title contains the other". That
+    reading would swallow `Pellucidar` inside `Tanar of Pellucidar`, which is the same author
+    and a real containment and two entirely different novels. What separates them is that the
+    extra words in `Tanar of Pellucidar` are part of the title, whereas the extra words in
+    `(Russian Edition)` are a bracketed edition label, and stripping only the latter keeps
+    Burroughs flagged where he belongs.
+    """
+    return (work_key(one["title"]) == work_key(other["title"])
+            and bool({normalize(a) for a in one["authors"]}
+                     & {normalize(a) for a in other["authors"]}))
 
 
 def corpus_books() -> list[dict]:
@@ -89,7 +101,7 @@ def fragment_matches(want_author: str, want_title: str, book: dict) -> bool:
 
 
 def ambiguous_seeds() -> dict[str, list[str]]:
-    """Seeds whose fragment also matches a differently-titled book, and which those are."""
+    """Seeds whose fragment also matches a different WORK, and which those are."""
     books = corpus_books()
     by_asin = {book["asin"]: book for book in books}
     found: dict[str, list[str]] = {}
@@ -101,6 +113,7 @@ def ambiguous_seeds() -> dict[str, list[str]]:
             book["title"] for book in books
             if fragment_matches(want_author, want_title, book)
             and normalize(book["title"]) != normalize(own["title"])
+            and not same_work(book, own)
         })
         if others:
             found[asin] = others
@@ -141,6 +154,58 @@ class TestTheCheckItself:
         assert normalize("A Princess of Mars") == normalize("  a  princess of mars ")
 
     def test_an_empty_fragment_matches_everything(self) -> None:
-        """Why the non-Latin seeds are on the list: an empty expectation excludes nothing."""
+        """Why build_corpus refuses one: an empty expectation excludes nothing."""
         anything = {"asin": "B9", "title": "Whatever", "authors": ["Someone"]}
         assert fragment_matches("", "", anything)
+        assert build_corpus.check_fragment("B9", "", "") is not None
+
+
+@pytest.mark.contract
+class TestSameWorkDoesNotLaunderARealCollision:
+    """`same_work` suppresses flags, so its failure mode is hiding a genuine defect.
+
+    Every case here is drawn from the committed corpus rather than invented, because the risk
+    is not that the rule mishandles a hypothetical title but that it mishandles one we ship.
+    """
+
+    def test_an_edition_label_in_parentheses_does_not_make_a_new_work(self) -> None:
+        plain = {"asin": "B01AGYIKG0", "title": "Around the World in Eighty Days",
+                 "authors": ["Jules Verne"]}
+        labelled = {"asin": "B076PQXBV7",
+                    "title": "Around the World in Eighty Days (AmazonClassics Edition)",
+                    "authors": ["Jules Verne", "George Makepeace Towle - translator"]}
+        assert same_work(plain, labelled)
+
+    def test_a_bracketed_translated_title_does_not_make_a_new_work(self) -> None:
+        comedia = {"asin": "B07RGRBKS5", "title": "La Divina Comedia",
+                   "authors": ["Dante Alighieri"]}
+        bracketed = {"asin": "B00BYIJW6A", "title": "La Divina Comedia [The Divine Comedy]",
+                     "authors": ["Dante Alighieri"]}
+        assert same_work(comedia, bracketed)
+
+    def test_a_leading_article_does_not_make_a_new_work(self) -> None:
+        bare = {"asin": "B01MU7YH84", "title": "Metamorphosis", "authors": ["Franz Kafka"]}
+        articled = {"asin": "B01LFD0GWM", "title": "The Metamorphosis", "authors": ["Franz Kafka"]}
+        assert same_work(bare, articled)
+
+    def test_a_containing_title_is_still_a_different_work(self) -> None:
+        """The case the rule exists to get right: same author, real containment, two novels."""
+        pellucidar = {"asin": "B002V1OVFQ", "title": "Pellucidar",
+                      "authors": ["Edgar Rice Burroughs"]}
+        tanar = {"asin": "B0C6B525PQ", "title": "Tanar of Pellucidar",
+                 "authors": ["Edgar Rice Burroughs"]}
+        assert not same_work(pellucidar, tanar)
+        assert "B002V1OVFQ" in ambiguous_seeds()
+
+    def test_a_volume_number_is_not_an_edition_label(self) -> None:
+        """Faust I is not an edition of Faust, so the Goethe cluster must stay flagged."""
+        faust = {"asin": "B00EOO99WS", "title": "Faust", "authors": ["Johann Wolfgang von Goethe"]}
+        part_one = {"asin": "B00APWL9E4", "title": "Faust I",
+                    "authors": ["Johann Wolfgang Goethe"]}
+        assert not same_work(faust, part_one)
+
+    def test_the_same_title_by_a_different_author_is_a_different_work(self) -> None:
+        """Sharing an author is required, so an unrelated namesake title cannot be waved through."""
+        one = {"asin": "B1", "title": "Marie", "authors": ["H. Rider Haggard"]}
+        other = {"asin": "B2", "title": "Marie", "authors": ["Someone Else"]}
+        assert not same_work(one, other)

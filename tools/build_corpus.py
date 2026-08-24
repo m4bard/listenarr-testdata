@@ -3,7 +3,9 @@
 
 Every ASIN in SEEDS is fetched from api.audnex.us and its returned title/author is
 checked against what we expect. An ASIN that does not resolve, or resolves to a
-different book, is reported and excluded — it never silently enters the corpus.
+different book, is reported and excluded — it never silently enters the corpus. A seed
+that expects an empty author or title is refused without being fetched at all, because a
+substring test against the empty string accepts anything and so verifies nothing.
 
 This exists so that no ASIN in this repository is ever taken on trust. Re-run it
 any time to confirm the corpus still reflects reality:
@@ -44,6 +46,13 @@ REGION_OVERRIDES: dict[str, str] = {
 
 # (asin, expect_author_substr, expect_title_substr, tags)
 # `tags` name the failure modes this book is useful for. See cases.py.
+#
+# Both expectations are matched as substrings of what the API returns, so NEITHER MAY BE
+# EMPTY: `"" in anything` is True, and a seed expecting nothing accepts whatever comes back
+# under that ASIN, including a different book. check_fragment() refuses such a seed before
+# it is fetched. Where a work has no Latin title at all the fragment is its native title;
+# that is weaker than a chosen fragment, because a short title and its fragment coincide,
+# and still enormously stronger than expecting nothing.
 SEEDS: list[tuple[str, str, str, list[str]]] = [
     # --- work-key proof: two ASINs, same series slot -------------------------
     ("B008DFUGCQ", "Burroughs", "Princess of Mars", ["work-key", "series"]),
@@ -164,24 +173,24 @@ SEEDS: list[tuple[str, str, str, list[str]]] = [
     ("B00BYIJW6A", "Dante", "Divina Comedia",
      ["non-english", "abridged", "title-one-letter-apart"]),
     ("B006GDCIY6", "Tolstoy", "War and Peace", ["non-english", "multi-asin"]),
-    ("B08BTM5TDG", "", "", ["cyrillic", "non-english", "multi-part"]),
-    ("B08BV2RNS9", "", "", ["cyrillic", "non-english", "multi-part"]),
-    ("B08BTZVGS8", "", "", ["cyrillic", "non-english", "multi-part"]),
+    ("B08BTM5TDG", "Толстой", "Война и мир 1", ["cyrillic", "non-english", "multi-part"]),
+    ("B08BV2RNS9", "Толстой", "Война и мир 2", ["cyrillic", "non-english", "multi-part"]),
+    ("B08BTZVGS8", "Толстой", "Война и мир 3", ["cyrillic", "non-english", "multi-part"]),
     ("B006C692NM", "Tolstoy", "Anna Karenina", ["non-english", "multi-asin"]),
 
     # --- pathological metadata: dangerous to write to a filesystem -------------
     ("B08ML2HVVW", "Defoe", "Plague Year", ["shell-metachars", "omnibus", "long-title"]),
     ("B003AAAU7U", "Trollope", "Forgive Her", ["question-mark"]),
-    ("B06VVP98S5", "Collins", "", ["question-mark", "short-title"]),
+    ("B06VVP98S5", "Collins", "Miss or Mrs", ["question-mark", "short-title"]),
     ("B005FGR77S", "Bierce", "Can Such Things Be", ["question-mark"]),
     ("B0B441BXY3", "Trollope", "Popenjoy", ["question-mark"]),
-    ("B09SZD5QKH", "Sinclair", "", ["percent-sign", "numeric-title"]),
+    ("B09SZD5QKH", "Sinclair", "100%", ["percent-sign", "numeric-title"]),
     ("B002UUON10", "Kipling", "Stalky", ["trailing-dot"]),
     ("B005R353GG", "Defoe", "Captain Singleton", ["long-title"]),
-    ("B0DNRK5BY1", "", "Cloud of Unknowing", ["anonymous-author"]),
+    ("B0DNRK5BY1", "Anonymous", "Cloud of Unknowing", ["anonymous-author"]),
     ("B002V9Z9WW", "Kipling", "IF", ["short-title", "all-caps"]),
-    ("B0CTK91XJ6", "", "", ["cyrillic", "non-latin-author", "byte-length"]),
-    ("B0B5Z12CCM", "", "", ["cjk", "non-latin-author", "byte-length"]),
+    ("B0CTK91XJ6", "Достоевский", "Белые ночи", ["cyrillic", "non-latin-author", "byte-length"]),
+    ("B0B5Z12CCM", "芥川", "杜子春", ["cjk", "non-latin-author", "byte-length"]),
 ]
 
 
@@ -218,6 +227,22 @@ def fetch(asin: str, region: str = DEFAULT_REGION) -> tuple[dict | None, str | N
         return None, type(exc).__name__
 
 
+def check_fragment(asin: str, want_author: str, want_title: str) -> str | None:
+    """Reject an expectation that cannot fail, returning why, or None if the seed is usable.
+
+    Acceptance is a substring test, and every string contains the empty string. A seed whose
+    expected author or title is blank therefore agrees with any answer the API gives, so the
+    ASIN behind it has never actually been verified even though the run reports it as ok.
+    """
+    blank = [f"expected {name} is empty"
+             for name, value in (("author", want_author), ("title", want_title))
+             if not value.strip()]
+    if not blank:
+        return None
+    return (f"{asin}: {' and '.join(blank)}, which matches every book; "
+            "give it a fragment that names the work")
+
+
 def check_region_lock() -> tuple[list[dict], list[str]]:
     """Assert that each regional ASIN resolves ONLY in its own marketplace.
 
@@ -230,6 +255,12 @@ def check_region_lock() -> tuple[list[dict], list[str]]:
     regions = sorted({region for _, region, _, _, _ in REGIONAL_SEEDS})
 
     for asin, home, want_author, want_title, tags in REGIONAL_SEEDS:
+        unusable = check_fragment(asin, want_author, want_title)
+        if unusable is not None:
+            problems.append(unusable)
+            print(f"  BAD       {asin}  (nothing expected of it)")
+            continue
+
         row: dict = {"asin": asin, "home_region": home, "tags": tags, "visibility": {}}
         for region in regions:
             data, err = fetch(asin, region)
@@ -275,6 +306,12 @@ def build() -> tuple[list[dict], list[str]]:
     problems: list[str] = []
 
     for asin, want_author, want_title, tags in SEEDS:
+        unusable = check_fragment(asin, want_author, want_title)
+        if unusable is not None:
+            problems.append(unusable)
+            print(f"  NOCHECK   {asin}  (nothing expected of it)", file=sys.stderr)
+            continue
+
         region = REGION_OVERRIDES.get(asin, DEFAULT_REGION)
         data, err = fetch(asin, region)
         if data is None:

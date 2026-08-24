@@ -159,6 +159,96 @@ class TestBuildRefuses:
 
 
 @pytest.mark.contract
+class TestAnEmptyExpectationIsRefused:
+    """A substring test against "" passes against anything, so an empty seed verifies nothing.
+
+    This is the hole underneath the substring-versus-exact argument. Whichever way that goes,
+    a seed expecting nothing is not a loose check, it is the absence of one, and it reports
+    itself as ok.
+    """
+
+    def test_an_empty_expected_title_keeps_the_book_out(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seed = ("B0000000AA", "Arthur Conan Doyle", "", ["canonical"])
+        monkeypatch.setattr(build_corpus, "SEEDS", [seed])
+        monkeypatch.setattr(build_corpus, "fetch", fake_fetch({seed[0]: AUDNEX_OK}))
+        books, problems = build_corpus.build()
+        assert books == []
+        assert len(problems) == 1 and "expected title is empty" in problems[0]
+
+    def test_an_empty_expected_author_keeps_the_book_out(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seed = ("B0000000AA", "", "The Valley of Fear", ["canonical"])
+        monkeypatch.setattr(build_corpus, "SEEDS", [seed])
+        monkeypatch.setattr(build_corpus, "fetch", fake_fetch({seed[0]: AUDNEX_OK}))
+        books, problems = build_corpus.build()
+        assert books == []
+        assert "expected author is empty" in problems[0]
+
+    def test_whitespace_is_not_a_fragment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A single space is a substring of nearly every title, so it is the same hole."""
+        seed = ("B0000000AA", "Arthur Conan Doyle", " ", ["canonical"])
+        monkeypatch.setattr(build_corpus, "SEEDS", [seed])
+        monkeypatch.setattr(build_corpus, "fetch", fake_fetch({seed[0]: AUDNEX_OK}))
+        books, problems = build_corpus.build()
+        assert books == []
+        assert "expected title is empty" in problems[0]
+
+    def test_the_refusal_happens_without_fetching_the_asin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing the API says can rescue the seed, so asking it wastes a request."""
+        asked: list[str] = []
+
+        def recording_fetch(
+            asin: str, region: str = build_corpus.DEFAULT_REGION
+        ) -> tuple[dict | None, str | None]:
+            asked.append(asin)
+            return AUDNEX_OK, None
+
+        monkeypatch.setattr(build_corpus, "SEEDS", [("B0000000AA", "", "", ["canonical"])])
+        monkeypatch.setattr(build_corpus, "fetch", recording_fetch)
+        build_corpus.build()
+        assert asked == []
+
+    def test_a_regional_seed_expecting_nothing_is_refused_too(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The region-lock loop runs the same substring check and had the same hole."""
+        seed = ("B00REGION1", "de", "Grimm", "", ["region-lock"])
+        monkeypatch.setattr(build_corpus, "REGIONAL_SEEDS", [seed])
+        monkeypatch.setattr(build_corpus, "fetch", fake_fetch({f"{seed[0]}@de": AUDNEX_OK}))
+        proofs, problems = build_corpus.check_region_lock()
+        assert proofs == []
+        assert any("expected title is empty" in p for p in problems)
+
+    def test_a_run_containing_one_refuses_to_write(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(build_corpus, "OUT", tmp_path / "corpus.json")
+        monkeypatch.setattr(build_corpus, "ROOT", tmp_path)
+        monkeypatch.setattr(build_corpus, "REGIONAL_SEEDS", [])
+        monkeypatch.setattr(sys, "argv", ["build_corpus.py"])
+        monkeypatch.setattr(build_corpus, "SEEDS", [("B0000000AA", "Doyle", "", ["canonical"])])
+        monkeypatch.setattr(build_corpus, "fetch", fake_fetch({"B0000000AA": AUDNEX_OK}))
+        assert build_corpus.main() == 1
+        assert not build_corpus.OUT.exists()
+
+    def test_every_committed_seed_carries_a_real_fragment(self) -> None:
+        """The seed table itself, not a fixture: no shipped seed may expect nothing."""
+        unusable = [
+            build_corpus.check_fragment(asin, author, title)
+            for asin, author, title, _tags in build_corpus.SEEDS
+        ] + [
+            build_corpus.check_fragment(asin, author, title)
+            for asin, _region, author, title, _tags in build_corpus.REGIONAL_SEEDS
+        ]
+        assert [problem for problem in unusable if problem is not None] == []
+
+
+@pytest.mark.contract
 class TestMatchingIsSubstringBased:
     """Characterisation, not endorsement.
 

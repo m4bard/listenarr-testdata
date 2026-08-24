@@ -53,8 +53,13 @@ JSON_OUT=""
 USE_LIBRARY=""
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${ROOT}/.venv/bin/python"
-LIBRARY="${ROOT}/build/attrib-library"
-CONFIG="${ROOT}/build/attrib-config"
+# Per-run, for the same reason CONTAINER is. Two concurrent runs used to share one library and
+# one config directory, and the second to start would rm -rf and regenerate the tree the first
+# was still scanning. The symptom is "manifest describes no files", which reads as a generator
+# fault and sends you looking at the generator. --keep leaves the tree behind for inspection.
+WORK="${ROOT}/build/attrib-$$"
+LIBRARY="${WORK}/library"
+CONFIG="${WORK}/config"
 CONTAINER="listenarr-attrib-$$"
 VARIANT_ARGS=()   # forwarded verbatim to generate_library.py --folder-variant
 
@@ -115,9 +120,12 @@ fi
 cleanup() {
     if [[ "$KEEP" -eq 1 ]]; then
         log INFO "leaving ${CONTAINER} running on port ${PORT}"
+        log INFO "leaving ${WORK} in place"
         return
     fi
     [[ -n "${RUNTIME:-}" ]] && "$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1
+    # Only ever the directory this run made. A prepared --library belongs to the caller.
+    [[ -d "$WORK" ]] && rm -rf "$WORK"
     return 0
 }
 trap cleanup EXIT

@@ -238,6 +238,40 @@ a book with no series and will silently skip it.
 
 Swap in any ASIN from `corpus/corpus.json`, or drop `--only-asin` to put the whole corpus on disk.
 
+#### When the folder does not match the record
+
+`--folder-variant` spells one book's folder differently from its database record while the tags
+and the record keep the canonical form. That is the state a tolerant folder matcher exists for,
+and it is a different question from the tag states: there the tags disagree with the folder, here
+the folder disagrees with the database.
+
+```bash
+# the record says 'The Hound of the Baskervilles'; the folder on disk says 'Hound of the
+# Baskervilles'. Its sibling, The Sign of Four, keeps its article.
+./tools/validate_scan_attribution.sh \
+    --image ghcr.io/listenarrs/listenarr:canary \
+    --asin B0036HXZCO --layout author-title \
+    --only-asin B0036HXZCO,B0036I51QQ \
+    --folder-variant drop-leading-article:B0036HXZCO
+
+# the record credits 'Lucy Maud Montgomery'; the folder says 'L. M. Montgomery', which is how
+# the corpus already credits Anne of Green Gables — so both books land in one author folder and
+# the scan root for either one is full of the other one's audio.
+./tools/validate_scan_attribution.sh \
+    --image ghcr.io/listenarrs/listenarr:canary \
+    --asin B002V8L2UQ --layout author-title \
+    --only-asin B002V8L2UQ,B073JR7W68 \
+    --folder-variant author-initials:B002V8L2UQ
+```
+
+Scoping the variant to a single ASIN is the point of the flag. A layout applies to a whole
+library; here one folder moves and its neighbour does not, so the same run measures both halves
+of the question: does the matcher reach the variant folder, and does it stop there. A bare
+`--folder-variant drop-leading-article` applies it to every book that can express it.
+
+`--folder-variant` is forwarded to the generator, so it cannot be combined with `--library`
+(a prepared tree has nothing left to vary) and the script says so rather than ignoring it.
+
 `--no-basepath` clears each book's BasePath so the scan root falls back to the library root —
 the state that exercises discovery and attribution. The run reports per-book scan cost and flags
 any BasePath that climbed past its own book folder, e.g.:
@@ -613,7 +647,7 @@ Also live-verified, and worth its own scenario: Audnex reports the Sherlock Holm
 
 ## What gets generated
 
-Six axes, composed into fourteen scenarios. `python3 corpus/cases.py` prints the matrix; each scenario declares the outcome a **correct** scanner should reach, which is what makes a generated tree a conformance suite rather than a pile of files.
+Seven axes, composed into fourteen scenarios. `python3 corpus/cases.py` prints the matrix; each scenario declares the outcome a **correct** scanner should reach, which is what makes a generated tree a conformance suite rather than a pile of files.
 
 | Axis | What it varies |
 |---|---|
@@ -623,6 +657,7 @@ Six axes, composed into fourteen scenarios. `python3 corpus/cases.py` prints the
 | **Path hazards** (15) | Metadata that is dangerous to write to a filesystem |
 | **Tag dialects** (5) | The same ASIN as an iTunes atom, a `TXXX` frame, a Vorbis comment |
 | **Clutter** (9) | Everything that is not the book: samples, intros, sidecars, cover art, OS detritus |
+| **Folder variants** (2) | The folder disagrees with the *record* rather than with the tags: a dropped leading article, an initialised author name |
 
 A few scenarios worth knowing about:
 
@@ -689,7 +724,7 @@ That last one deserves saying plainly: **embedded tags are attacker-controlled i
 
 ```
 corpus/corpus.json          123 verified books, generated — do not hand-edit
-corpus/cases.py             the six axes and fourteen scenarios. Start here.
+corpus/cases.py             the seven axes and fourteen scenarios. Start here.
 tools/build_corpus.py       fetches and verifies every ASIN against live metadata
 tools/generate_library.py   the generator
 tools/make_tag_fixtures.py  per-file tag agreement/disagreement fixtures

@@ -497,6 +497,58 @@ CLUTTER: dict[str, str] = {
 
 
 # --------------------------------------------------------------------------
+# Axis 7: folder variants — the FOLDER disagrees with the RECORD
+# --------------------------------------------------------------------------
+# Distinct from axis 2, and the distinction is the whole point. A tag state is the tags
+# disagreeing with the folder, and every axis-2 expectation is written on the assumption that
+# the folder tells the truth. Here the folder is what differs, and it differs from the
+# database record rather than from the tags: the record says 'The Hound of the Baskervilles',
+# the folder on disk says 'Hound of the Baskervilles', and the tags still say what the record
+# says. That is an ordinary library, not a corrupt one — people drop articles and initialise
+# given names when they name folders, and a scanner that compares the record's title to the
+# folder byte for byte finds nothing.
+#
+# A variant is a transform on the metadata used to BUILD the path. The corpus record and the
+# embedded tags are left alone, so the manifest's answer key still names the true owner of
+# every file and a tolerant matcher can be scored against it.
+#
+# The reason this is an axis and not a layout: a layout is uniform across a library, and the
+# interesting case is one book in variant form beside a sibling that is not. The tolerant
+# matcher has to reach the variant folder AND stop there.
+
+@dataclass(frozen=True)
+class FolderVariant:
+    key: str
+    note: str
+    # what a correct scanner should do, given that the RECORD carries the canonical form:
+    expect: str
+
+
+FOLDER_VARIANTS: list[FolderVariant] = [
+    FolderVariant(
+        key="drop-leading-article",
+        note="The folder drops a leading 'The', 'A' or 'An' that the record keeps: record "
+             "'The Hound of the Baskervilles', folder 'Hound of the Baskervilles'. Common "
+             "enough that some tools do it deliberately, to make an alphabetical listing "
+             "sort on the first meaningful word.",
+        expect="link — same work; the article carries no identity. Reaching a SIBLING folder "
+               "in the same author directory is a misattribution, not a tolerant match",
+    ),
+    FolderVariant(
+        key="author-initials",
+        note="The author folder initialises the given names the record spells out: record "
+             "'Lucy Maud Montgomery', folder 'L. M. Montgomery'. Note what this does to a "
+             "library rather than to one book — the corpus credits some works to the "
+             "initialised form already, so initialising the rest collects several books "
+             "under ONE author folder, and the scan root for any of them contains audio "
+             "belonging to the others.",
+        expect="link — same author. The shared author folder must not become the book's "
+               "BasePath, and none of the neighbour's files may be claimed",
+    ),
+]
+
+
+# --------------------------------------------------------------------------
 # Scenarios: the library-level shapes worth generating whole
 # --------------------------------------------------------------------------
 
@@ -696,6 +748,7 @@ def resolve_layout(key: str) -> str | None:
 
 
 TAG_STATES_BY_KEY = {state.key: state for state in TAG_STATES}
+FOLDER_VARIANTS_BY_KEY = {variant.key: variant for variant in FOLDER_VARIANTS}
 STRUCTURES_BY_KEY = {structure.key: structure for structure in FILE_STRUCTURES}
 HAZARDS_BY_KEY = {hazard.key: hazard for hazard in PATH_HAZARDS}
 DIALECTS_BY_KEY = {dialect.key: dialect for dialect in TAG_DIALECTS}
@@ -710,6 +763,7 @@ if __name__ == "__main__":
     print(f"  {len(PATH_HAZARDS):>2} path hazards     metadata that is unsafe to write to disk")
     print(f"  {len(TAG_DIALECTS):>2} tag dialects     per-container tag spellings")
     print(f"  {len(CLUTTER):>2} clutter kinds    everything that is not the book")
+    print(f"  {len(FOLDER_VARIANTS):>2} folder variants  how the folder differs from the record")
     print()
     print(f"{len(SCENARIOS)} scenarios")
     for scenario in SCENARIOS:

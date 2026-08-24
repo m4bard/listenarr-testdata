@@ -25,6 +25,17 @@
 # and silently skips it, so a set of standalone books generates an EMPTY library. Use
 # author-title for those.
 #
+# --folder-variant makes the on-disk folder disagree with the RECORD, which is the state a
+# tolerant folder matcher exists for. The record and the embedded tags keep the canonical
+# form; only the path moves. Scope it to one ASIN so its sibling stays in ordinary form, and
+# the same run then measures both halves of the question — does the matcher reach the variant
+# folder, and does it stop there:
+#
+#   ./tools/validate_scan_attribution.sh --image ghcr.io/listenarrs/listenarr:canary \
+#       --asin B0036HXZCO --layout author-title \
+#       --only-asin B0036HXZCO,B0036I51QQ \
+#       --folder-variant drop-leading-article:B0036HXZCO
+#
 # Exit 0 = no misattribution. Exit 1 = the scan claimed files belonging to another book.
 #
 set -euo pipefail
@@ -45,6 +56,7 @@ PYTHON="${ROOT}/.venv/bin/python"
 LIBRARY="${ROOT}/build/attrib-library"
 CONFIG="${ROOT}/build/attrib-config"
 CONTAINER="listenarr-attrib-$$"
+VARIANT_ARGS=()   # forwarded verbatim to generate_library.py --folder-variant
 
 usage() {
     cat <<EOF
@@ -54,6 +66,12 @@ validate_scan_attribution.sh — show which files a scan attributes to one audio
   --asin ASIN       the ONE book to add and scan (required)
   --only-asin LIST  comma-separated ASINs to put on disk (default: the whole corpus)
   --layout KEY      on-disk layout (default: ${LAYOUT})
+  --folder-variant SPEC
+                    spell one book's FOLDER differently from its record while the tags and
+                    the record keep the canonical form, as KEY or KEY:ASIN,ASIN. Repeatable.
+                    Known keys: drop-leading-article, author-initials. This is how a
+                    tolerant folder matcher gets something to be tolerant of, and scoping it
+                    to one ASIN leaves the sibling in ordinary form so an over-reach shows up.
   --port N          host port (default: ${PORT})
   --seed N          generator seed (default: ${SEED})
   --label TEXT      label for the report header (default: the image ref)
@@ -69,6 +87,7 @@ while [[ $# -gt 0 ]]; do
         --asin)      ASIN="$2";      shift 2 ;;
         --only-asin) ONLY_ASIN="$2"; shift 2 ;;
         --layout)    LAYOUT="$2";    shift 2 ;;
+        --folder-variant) VARIANT_ARGS+=(--folder-variant "$2"); shift 2 ;;
         --port)      PORT="$2";      shift 2 ;;
         --seed)      SEED="$2";      shift 2 ;;
         --label)     LABEL="$2";     shift 2 ;;
@@ -111,6 +130,11 @@ if [[ -n "$USE_LIBRARY" ]]; then
     # source as a NAMED VOLUME, not a bind mount, so a relative --library fails later with
     # "names must match [a-zA-Z0-9]..." from volume create, which reads as a container
     # problem rather than a path one and sends you looking in the wrong place.
+    # --folder-variant is an instruction to the generator, and this branch does not generate.
+    # Silently ignoring it would scan an ordinary tree and report a clean pass for a case that
+    # was never on disk, which is the worst way for these two flags to interact.
+    [[ ${#VARIANT_ARGS[@]} -eq 0 ]] \
+        || die "--folder-variant and --library are mutually exclusive: --library uses a tree that already exists, so there is nothing left to vary"
     [[ -d "$USE_LIBRARY" ]] || die "--library ${USE_LIBRARY} is not a directory"
     USE_LIBRARY="$(cd "$USE_LIBRARY" && pwd)"
     [[ -f "${USE_LIBRARY}/manifest.json" ]] || die "${USE_LIBRARY} has no manifest.json"
@@ -122,7 +146,8 @@ else
     rm -rf "$LIBRARY" "$CONFIG"; mkdir -p "$CONFIG"
     "$PYTHON" "${ROOT}/tools/generate_library.py" \
         --layout "$LAYOUT" --out "$LIBRARY" --seed "$SEED" --force \
-        ${ONLY_ASIN:+--only-asin "$ONLY_ASIN"} >/dev/null \
+        ${ONLY_ASIN:+--only-asin "$ONLY_ASIN"} \
+        ${VARIANT_ARGS+"${VARIANT_ARGS[@]}"} >/dev/null \
         || die "generation failed"
 fi
 FILES=$(find "$LIBRARY" -type f ! -name manifest.json | wc -l)

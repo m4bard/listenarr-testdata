@@ -4,7 +4,7 @@
     python3 tools/generate_library.py --scenario mixed-reality --out ./build/library --seed 42
 
 Reads `corpus/corpus.json` (real books, machine-verified ASINs) and `corpus/cases.py`
-(the six axes and the scenarios that compose them), and writes a real on-disk library:
+(the seven axes and the scenarios that compose them), and writes a real on-disk library:
 folders named per the scenario's layouts, ~1-second silent audio files synthesized with
 ffmpeg, and genuine embedded tags written with mutagen.
 
@@ -504,6 +504,114 @@ def apply_hazard(spec: HazardSpec, meta: Meta, use_twin: bool = False) -> Meta:
 
 
 # --------------------------------------------------------------------------
+# Axis 7: folder variants — the FOLDER disagrees with the RECORD
+# --------------------------------------------------------------------------
+# Same machinery as a hazard, pointed at a different question. A hazard transforms the tag and
+# lets the path keep whatever POSIX allows through; a folder variant transforms ONLY the
+# metadata the path is built from, and leaves the tags and the corpus record carrying the
+# canonical form. So the disagreement is between the folder and the database, which is what a
+# tolerant folder matcher has to survive, and the manifest still names the true owner of every
+# file because `belongs_to_asin` comes from the corpus and not from the path.
+#
+# Scoped per book on purpose. A layout is uniform across a library; the case worth testing is
+# one book in variant form next to a sibling that is not, because a matcher loosened far
+# enough to find the variant folder is also loose enough to reach the neighbour.
+
+@dataclass(frozen=True)
+class FolderVariantSpec:
+    key: str
+    target: str                       # "title" or "author"
+    transform: Callable[[str], str]
+
+
+LEADING_ARTICLES = ("The ", "A ", "An ")
+
+
+def drop_leading_article(title: str) -> str:
+    """'The Hound of the Baskervilles' -> 'Hound of the Baskervilles'.
+
+    Only a LEADING article, and only with a following word: a book actually titled 'The' or
+    'A' keeps its name, and an internal 'the' is untouched.
+    """
+    for article in LEADING_ARTICLES:
+        if title.startswith(article) and title[len(article):].strip():
+            return title[len(article):]
+    return title
+
+
+def author_initials(name: str) -> str:
+    """'Lucy Maud Montgomery' -> 'L. M. Montgomery'; a name already initialised is unchanged.
+
+    Deliberately the naive rule, because it is the rule a person naming a folder uses: every
+    given name becomes its first letter and a dot, the family name survives whole. Applied to
+    a name that is already in that form it is a no-op, which is how the caller learns this
+    book cannot express the variant.
+    """
+    parts = name.split()
+    if len(parts) < 2:
+        return name
+    given = " ".join(f"{part[0]}." for part in parts[:-1])
+    return f"{given} {parts[-1]}"
+
+
+FOLDER_VARIANTS: list[FolderVariantSpec] = [
+    FolderVariantSpec("drop-leading-article", "title", drop_leading_article),
+    FolderVariantSpec("author-initials", "author", author_initials),
+]
+
+FOLDER_VARIANTS_BY_KEY = {variant.key: variant for variant in FOLDER_VARIANTS}
+
+
+def apply_folder_variant(spec: FolderVariantSpec, meta: Meta) -> tuple[Meta, bool]:
+    """Return (path metadata in the variant spelling, whether it actually differs).
+
+    The flag matters. 'The Sign of Four' has an article to drop and 'L. M. Montgomery' has
+    nothing left to initialise, so the same variant applies to one book and not another. A
+    generator that recorded the variant either way would claim a disagreement that is not on
+    disk, and the manifest is the answer key — it may not overstate.
+    """
+    varied = Meta(**vars(meta))
+    varied.authors = list(meta.authors)
+    varied.narrators = list(meta.narrators)
+    if spec.target == "title":
+        varied.title = spec.transform(meta.title)
+    else:
+        varied.authors = [spec.transform(author) for author in meta.authors]
+    differs = (varied.title, tuple(varied.authors)) != (meta.title, tuple(meta.authors))
+    return varied, differs
+
+
+def parse_folder_variants(values: list[str] | None) -> list[tuple[str, set[str]]]:
+    """Parse `KEY` or `KEY:ASIN[,ASIN...]` into (key, ASINs). An empty set means every book.
+
+    Raises ValueError on an unknown key, so a typo fails before anything is generated rather
+    than producing a library that quietly carries no variant at all.
+    """
+    parsed: list[tuple[str, set[str]]] = []
+    for value in values or []:
+        key, _, asin_list = value.partition(":")
+        key = key.strip()
+        if key not in FOLDER_VARIANTS_BY_KEY:
+            raise ValueError(
+                f"unknown folder variant '{key}'. Known: {', '.join(FOLDER_VARIANTS_BY_KEY)}"
+            )
+        asins = {a.strip().upper() for a in asin_list.split(",") if a.strip()}
+        parsed.append((key, asins))
+    return parsed
+
+
+def folder_variant_for(
+    variants: list[tuple[str, set[str]]],
+    book: dict[str, Any],
+) -> FolderVariantSpec | None:
+    """The first declared variant that covers this book, or None."""
+    for key, asins in variants:
+        if not asins or book["asin"].upper() in asins:
+            return FOLDER_VARIANTS_BY_KEY[key]
+    return None
+
+
+# --------------------------------------------------------------------------
 # Audio: synthesize once, copy per file
 # --------------------------------------------------------------------------
 
@@ -889,6 +997,7 @@ def generate(
     structure_override: str | None = None,
     tag_state_override: str | None = None,
     chapter_titles: bool = False,
+    folder_variants: list[tuple[str, set[str]]] | None = None,
 ) -> dict[str, Any]:
     """Generate the library for one scenario and return its manifest.
 
@@ -907,6 +1016,13 @@ def generate(
     what most chapter-split rips carry, and it is a third state distinct from both correct
     tags and no tags: the tag is present, accurate about the chapter, and useless for
     deciding which files are the same book.
+
+    folder_variants renders the on-disk FOLDER (and the filename under it) as a variant
+    spelling of the book's true metadata while the tags and the corpus record keep the
+    canonical form, so the disagreement is between the folder and the database rather than
+    between the tags and the folder. Each entry is (variant key, ASINs it applies to), and an
+    empty ASIN set means every book. Scoping it to one ASIN is the usual shape: the point of
+    the case is a variant folder standing next to a sibling in ordinary form.
 
     only_asins / only_tags narrow the corpus to specific books (by ASIN) or to books
     carrying any of the given failure-mode tags, so a reported bug becomes a minimal
@@ -969,6 +1085,16 @@ def generate(
                 state = tag_states[(index + copy_index) % len(tag_states)]
 
             tags, path, applied = apply_tag_state(state, book, corpus, rng)
+
+            # --- folder variant: the PATH metadata alone moves; tags and record stay canonical
+            variant_key: str | None = None
+            variant_spec = folder_variant_for(folder_variants or [], book)
+            if variant_spec:
+                varied, differs = apply_folder_variant(variant_spec, path)
+                if differs:
+                    path = varied
+                    variant_key = variant_spec.key
+
             if not applied:
                 # This book cannot express this state (no subtitle, no colliding sibling, no
                 # known author variant). Record the truth and say so — never claim a
@@ -1070,6 +1196,9 @@ def generate(
                         "dialect": this_dialect,
                         "hazard": hazard_key,
                         "hazard_twin": bool(spec and spec.twin and emission == 1),
+                        # Null unless the folder really was rendered in the variant spelling:
+                        # a book with no leading article to drop records no variant.
+                        "folder_variant": variant_key,
                         "part": part,
                         "of": structure.parts,
                         "tags_written": written_tags,
@@ -1080,6 +1209,10 @@ def generate(
                         "expect_linked_asin": book["asin"],
                         "expect": cases.TAG_STATES_BY_KEY[state].expect,
                         "expect_hazard": spec.expect if spec else None,
+                        "expect_folder_variant": (
+                            cases.FOLDER_VARIANTS_BY_KEY[variant_key].expect
+                            if variant_key else None
+                        ),
                     })
 
                 if clutter and foldered:
@@ -1126,6 +1259,14 @@ def main() -> int:
                                         "--list-structures")
     ap.add_argument("--tag-state", help="force a single embedded-tag state, overriding the "
                                         "scenario's mix; see --list-tag-states")
+    ap.add_argument("--folder-variant", action="append", metavar="KEY[:ASIN,...]",
+                    help="spell the on-disk FOLDER (and the filename under it) as a variant "
+                         "of the book's true metadata while the tags and the corpus record "
+                         "keep the canonical form, so the folder disagrees with the DATABASE "
+                         "rather than with the tags. 'KEY:ASIN,ASIN' scopes it to those "
+                         "books, which is what puts a variant folder next to a sibling in "
+                         "ordinary form; bare 'KEY' applies it to every book that can express "
+                         "it. Repeatable. See --list-folder-variants.")
     ap.add_argument("--chapter-titles", action="store_true",
                     help="tag each file of a multi-file book with its CHAPTER title "
                          "('Chapter 1', 'Chapter 2', ...) instead of the book title, the "
@@ -1136,6 +1277,8 @@ def main() -> int:
     ap.add_argument("--list-tag-states", action="store_true",
                     help="list the embedded-tag states and exit")
     ap.add_argument("--list-layouts", action="store_true", help="list the layouts and exit")
+    ap.add_argument("--list-folder-variants", action="store_true",
+                    help="list the folder variants and exit")
     ap.add_argument("--force", action="store_true", help="overwrite a non-empty --out")
     ap.add_argument("--ffmpeg-source", choices=("jellyfin", "johnvansickle", "system"),
                     default="jellyfin",
@@ -1167,12 +1310,21 @@ def main() -> int:
             print(f"{state.key:24} {state.expect}")
         return 0
 
+    if args.list_folder_variants:
+        for variant in cases.FOLDER_VARIANTS:
+            print(f"{variant.key:24} {variant.expect}")
+        return 0
+
     if args.structure and args.structure not in cases.STRUCTURES_BY_KEY:
         ap.error(f"unknown structure '{args.structure}'. Known: "
                  f"{', '.join(cases.STRUCTURES_BY_KEY)}")
     if args.tag_state and args.tag_state not in cases.TAG_STATES_BY_KEY:
         ap.error(f"unknown tag state '{args.tag_state}'. Known: "
                  f"{', '.join(cases.TAG_STATES_BY_KEY)}")
+    try:
+        folder_variants = parse_folder_variants(args.folder_variant)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     # Resolve a friendly alias (e.g. `listenarr`) to its canonical layout key.
     layout_key = cases.resolve_layout(args.layout) if args.layout else None
@@ -1190,7 +1342,7 @@ def main() -> int:
 
     # --layout / --only-asin / --tag alone still need a scenario; default to the clean adoption one.
     narrowed = bool(args.layout or only_asins or only_tags or args.structure
-                    or args.tag_state or args.chapter_titles)
+                    or args.tag_state or args.chapter_titles or folder_variants)
     scenario_key = args.scenario or ("existing-library-adoption" if narrowed else None)
     if not scenario_key or not args.out:
         ap.error("--scenario and --out are required (or --layout, --list, --list-layouts)")
@@ -1218,7 +1370,8 @@ def main() -> int:
                         only_asins=only_asins, only_tags=only_tags, ffmpeg=ffmpeg,
                         structure_override=args.structure,
                         tag_state_override=args.tag_state,
-                        chapter_titles=args.chapter_titles)
+                        chapter_titles=args.chapter_titles,
+                        folder_variants=folder_variants)
     print(f"scenario   {manifest['scenario']}")
     print(f"seed       {manifest['seed']}")
     print(f"books      {manifest['corpus_books']}")

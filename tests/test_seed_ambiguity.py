@@ -29,45 +29,45 @@ import build_corpus
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-# Ambiguous as of 2026-08-04, measured against the committed corpus. Shrinking this list is the
-# point of having it; growing it is a regression. Twenty series cases were fixed by choosing a
-# fragment that names the specific work. What remains is two kinds of case that substring
-# matching cannot separate at all: a title that is a strict prefix of another (Pellucidar inside
-# Tanar of Pellucidar, Faust inside Faust I), and the seeds with no Latin fragment to give.
+# Measured against the committed corpus, last narrowed 2026-08-24. Shrinking this list is the
+# point of having it; growing it is a regression. Two rounds of fixes have been done: twenty
+# series cases got a fragment naming the specific work, then sixteen of the empty-fragment
+# language and edition seeds got one too, which is why several non-English seeds that used to
+# expect nothing now expect a short native fragment (Vingt mille lieues, Verwandlung,
+# Dornroeschen).
+#
+# What is left is three kinds of case, none of them fixable by picking a better fragment:
+#
+#   1. A title that is a strict substring of another's, so nothing matching the shorter one can
+#      fail to match the longer: Pellucidar inside Tanar of Pellucidar, Faust inside Faust I,
+#      War and Peace inside War and Peace (Russian Edition).
+#   2. Two editions of one work whose titles differ only by an edition marker, where the pair
+#      now collides with each other and with nothing else. Separating them is a decision about
+#      whether an edition label belongs in a fragment at all, not a missing fragment.
+#   3. The five seeds whose author and title are both non-Latin, where the only specific value
+#      available is the native string and lifting it out of the API response would make the
+#      expectation a copy of the answer.
 KNOWN_AMBIGUOUS_SEEDS: frozenset[str] = frozenset({
+    # 1. strict-substring titles
     "B002V0PVJC",
     "B002V1OVFQ",
-    "B002V9Z9WW",
-    "B003F6JXC2",
-    "B006C692NM",
-    "B006GDCIY6",
     "B00769TAK4",
-    "B008Q3A6JI",
-    "B008WB1L70",
     "B00APWL9E4",
-    "B00B4FPVR2",
-    "B00BYIJW6A",
     "B00EOO99WS",
     "B00JQEQFL4",
-    "B00T9V0BU0",
-    "B00TDZQG3I",
-    "B00TPKF9QQ",
-    "B00TPW1FLM",
-    "B00UXEBBIS",
+    # 2. edition variants of one work, colliding only with their own sibling
+    "B00BYIJW6A",
+    "B006GDCIY6",
     "B01AGYIKG0",
-    "B01LFD0GWM",
     "B01MU7YH84",
     "B076PQXBV7",
-    "B07B7MCLB3",
     "B07RGRBKS5",
+    # 3. no Latin fragment to give
     "B08BTM5TDG",
     "B08BTZVGS8",
     "B08BV2RNS9",
-    "B08ML2HVVW",
     "B0B5Z12CCM",
     "B0CTK91XJ6",
-    "B0DY31J772",
-    "B0F48KS3BX",
 })
 
 

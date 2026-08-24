@@ -39,7 +39,8 @@ vet-against.sh — build a Listenarr branch and run the harness against it.
   --dry-run        print the clone/build/run plan and exit; touch nothing
   --help           this help
 
-Any other flag is forwarded to benchmark_scan.sh, e.g.:
+Any other flag is forwarded to the --tool runner, and is checked against that runner's
+own options before anything is cloned or built. For --tool benchmark, e.g.:
   --layout KEY     force a single layout (or alias, e.g. 'listenarr')
   --scenario KEY   scenario to generate
   --books N        how many audiobooks to add and scan
@@ -66,6 +67,18 @@ case "$TOOL" in
     grouping)    RUNNER="${ROOT}/tools/validate_chapter_grouping.sh" ;;
     *) die "unknown --tool '${TOOL}' (expected: benchmark, attribution, grouping)" ;;
 esac
+
+# Check the forwarded flags against the runner BEFORE cloning and building. Each --tool has its
+# own option set, and an unrecognised flag used to surface only when the runner rejected it,
+# which is after several minutes of image build. Match against the runner's own --help so this
+# needs no second list to keep in sync.
+RUNNER_HELP="$("$RUNNER" --help 2>&1 || true)"
+for arg in ${PASSTHROUGH+"${PASSTHROUGH[@]}"}; do
+    case "$arg" in
+        --*) grep -qe "$(printf '%s' "$arg" | sed 's/[].[^$*\/]/\\&/g')\\b" <<<"$RUNNER_HELP" \
+                || die "'${arg}' is not an option of the '${TOOL}' runner ($(basename "$RUNNER")). Run it with --help to see what it takes." ;;
+    esac
+done
 command -v git >/dev/null 2>&1 || die "git is required (Ubuntu: sudo apt install git)"
 if command -v podman >/dev/null 2>&1; then
     RUNTIME=podman

@@ -107,6 +107,12 @@ trap cleanup EXIT
 if [[ -n "$USE_LIBRARY" ]]; then
     # A prepared tree, for shapes the generator does not express (e.g. an author folder
     # spelled as a variant). Its manifest must already describe the paths as they are.
+    # Absolutise before anything else touches it. The container runtime treats a relative
+    # source as a NAMED VOLUME, not a bind mount, so a relative --library fails later with
+    # "names must match [a-zA-Z0-9]..." from volume create, which reads as a container
+    # problem rather than a path one and sends you looking in the wrong place.
+    [[ -d "$USE_LIBRARY" ]] || die "--library ${USE_LIBRARY} is not a directory"
+    USE_LIBRARY="$(cd "$USE_LIBRARY" && pwd)"
     [[ -f "${USE_LIBRARY}/manifest.json" ]] || die "${USE_LIBRARY} has no manifest.json"
     LIBRARY="$USE_LIBRARY"
     rm -rf "$CONFIG"; mkdir -p "$CONFIG"

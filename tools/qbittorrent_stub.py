@@ -12,6 +12,9 @@ Only the routes Listenarr's qBittorrent adapter actually calls are implemented:
     GET  /api/v2/app/preferences   global seed limits, read by the item-fetch workflow
     GET  /api/v2/torrents/info     the queue itself
     GET  /api/v2/torrents/files    per-torrent file list, polled once per torrent
+    POST /api/v2/torrents/add      accepts a torrent; with --conflict-on-duplicate it answers
+                                   409 the second time the same info-hash is submitted, which
+                                   is what qBittorrent 5.2 does for a torrent it already holds
 
 The point of the whole thing is `--malformed-index`. qBittorrent's `downloaded` field is
 documented as an integer and normally is one, so a client that reads it with a throwing
@@ -48,11 +51,12 @@ import argparse
 import hashlib
 import json
 import logging
+import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote_to_bytes, urlparse
 
 LOG = logging.getLogger("qbstub")
 
@@ -97,11 +101,46 @@ def corrupt(torrent: dict[str, Any], field: str, kind: str) -> dict[str, Any]:
     return torrent
 
 
+MAGNET_BTIH = re.compile(rb"xt=urn:btih:([0-9a-fA-F]{40}|[2-7A-Za-z]{32})")
+
+
+def extract_info_hash(body: bytes) -> str | None:
+    """Pull the info-hash out of an add request.
+
+    Listenarr submits either a magnet in the `urls` field or a .torrent file part. The
+    magnet carries the hash in the URI. For a file part we hash the raw bytes instead:
+    the stub does not need the true BitTorrent info-hash, only a stable identifier that
+    is the same for the same submission and different for a different one.
+    """
+    # Percent-decode first. A form-encoded magnet arrives as xt%3Durn%3Abtih%3A..., and
+    # the surrounding fields differ per submission (savepath, category), so falling back
+    # to hashing the whole body would make two grabs of the SAME release look different.
+    # That is precisely the case this stub exists to catch.
+    decoded = unquote_to_bytes(body.replace(b"+", b" "))
+    match = MAGNET_BTIH.search(decoded) or MAGNET_BTIH.search(body)
+    if match:
+        return match.group(1).decode().lower()
+
+    marker = b'name="torrents"'
+    index = body.find(marker)
+    if index != -1:
+        payload = body[index + len(marker):]
+        return "file:" + hashlib.sha1(payload).hexdigest()
+
+    if not body:
+        return None
+    return "body:" + hashlib.sha1(body).hexdigest()
+
+
 class StubState:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.lock = threading.Lock()
         self.info_requests = 0
+        # Info-hashes this client has been told to hold. A real qBittorrent keeps them
+        # across the session, which is exactly why a second submission of the same
+        # release is rejected rather than silently re-added.
+        self.added_hashes: set[str] = set()
 
     def torrents_json(self) -> str:
         torrents = [
@@ -141,16 +180,52 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_status(self, code: int, body: str, content_type: str = "text/plain") -> None:
+        payload = body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length") or 0)
-        if length:
-            self.rfile.read(length)
+        body = self.rfile.read(length) if length else b""
         if path == "/api/v2/auth/login":
             LOG.info("login accepted")
             self._send("Ok.", "text/plain", cookie=True)
             return
+        if path == "/api/v2/torrents/add":
+            self._handle_add(body)
+            return
         self.send_error(404)
+
+    def _handle_add(self, body: bytes) -> None:
+        """Accept a torrent, and optionally reject a repeat of one already held.
+
+        The interesting case is the repeat. An application that cannot record which
+        wanted items a single release satisfies will submit the same release again for
+        the next item, and a client that already holds it has to say something. Answering
+        409 is what qBittorrent 5.2 does.
+        """
+        info_hash = extract_info_hash(body)
+        with self.state.lock:
+            already = info_hash is not None and info_hash in self.state.added_hashes
+            if not already and info_hash is not None:
+                self.state.added_hashes.add(info_hash)
+            held = len(self.state.added_hashes)
+
+        if already and self.state.args.conflict_on_duplicate:
+            LOG.info("REJECTING duplicate submission of %s with 409 (already held)", info_hash)
+            self._send_status(409, "Torrent is already in the download list.")
+            return
+
+        if already:
+            LOG.info("accepting duplicate submission of %s (409 disabled)", info_hash)
+        else:
+            LOG.info("accepted %s; now holding %d torrent(s)", info_hash or "<no hash found>", held)
+        self._send("Ok.", "text/plain")
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
@@ -181,6 +256,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--conflict-on-duplicate",
+        action="store_true",
+        help=(
+            "answer 409 when the same info-hash is submitted twice, as qBittorrent 5.2 does "
+            "for a torrent it already holds. Off by default so existing callers are unaffected."
+        ),
+    )
     parser.add_argument("--port", type=int, default=8111, help="port to listen on")
     parser.add_argument("--count", type=int, default=6, help="how many torrents to serve")
     parser.add_argument(

@@ -1,5 +1,10 @@
 build/
 .venv/
+# dotnet intermediate output from tools/taglib_probe. Kept out on two grounds: it is build
+# product, and the .nuget.g.props MSBuild writes there records the absolute path of the local
+# NuGet cache, which is a home directory this repo must never carry.
+obj/
+bin/
 __pycache__/
 *.pyc
 *.m4b

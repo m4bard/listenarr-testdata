@@ -124,6 +124,149 @@ benchmark deterministic and race-free.
   from the zip's own manifest. It then re-checks the extracted binary against the in-zip
   `manifest.json` (defense in depth) and drops it into `--dest`.
 
+## Could TagLib# replace ffprobe? A measurement
+
+Everything above provisions and validates ffprobe. This section asks whether Listenarr needs it.
+
+The download-at-boot subsystem that fetches ffprobe has produced three upstream issues on its own
+(#777 the broken macOS install, #786 the fix, #791 unpinned and unverified URLs). Readarr and
+Lidarr, the audio-focused projects in the same lineage, carry no ffmpeg-family dependency at all;
+they read media through TagLib#. And Listenarr already ships TagLibSharp — it references the
+package in `Listenarr.Infrastructure.csproj` and uses it in `TagLibAudioTagWriter` — but only to
+*write* tags. Nothing reads `Properties.Duration`, `AudioBitrate` or `AudioSampleRate`.
+
+`FfprobeMetadataMapper` extracts duration, format/container, bitrate, sample rate, codec, channels
+and a handful of tags. Every one of those is a TagLib# property. ffprobe is not used for chapters
+anywhere. So the question has a number for an answer, and **`tools/taglib_parity.py`** measures it.
+
+**This is a measurement, not a proposal.** It changes no Listenarr code and it does not argue for a
+conclusion; it produces per-field agreement rates and lists every disagreement with both values.
+
+```bash
+# generate the matrix and measure it
+python3 tools/taglib_parity.py --generate build/parity-matrix --json build/parity.json
+
+# take the same measurement over a tree of real files, generating nothing
+python3 tools/taglib_parity.py --corpus /path/to/some/library --json real.json
+```
+
+### How it is built
+
+- **`tools/taglib_probe/`** is a small dotnet console app that prints what TagLib# sees as JSON
+  Lines and interprets nothing. It pins **the same TagLibSharp version Listenarr resolves** through
+  its central package management (2.3.0). A Python taglib binding would have answered a different
+  question: what matters is what *Listenarr* would get, not what some other build of some other
+  library reports.
+- **`tools/taglib_parity.py`** drives that probe and ffprobe over the same files, maps *both* sides
+  down to Listenarr's `AudioMetadata` shape, and diffs field by field. The ffprobe invocation is
+  imported from `ffprobe_equivalence.py` rather than re-spelled, so the two tools cannot drift
+  apart about what Listenarr's command line is.
+
+Mapping both sides before comparing is the part that makes the result mean anything. Raw ffprobe
+JSON against raw TagLib# properties would measure the two libraries; Listenarr's mappers sit in
+between and do real work, so the ffprobe side is a faithful mirror of `FfprobeMetadataMapper` and
+`FfprobeTagMetadataMapper` — quirks included — and the TagLib# side is a *proposed* mapping written
+out explicitly in `taglib_view()`, because Listenarr has no such code today.
+
+The matrix is 32 recipes across mp3, m4b, m4a, flac, opus, ogg and wav, covering CBR, ABR, VBR at
+several quality settings, lossless, a stripped Xing header, mono and stereo, and 22.05/44.1/48 kHz.
+**Most of the bitrates are deliberately not round.** Upstream #549 was reported fixed on the
+strength of a suite whose every bitrate was an exact tier value; on a real library the mismatch rate
+was ninety percent. A matrix of 128s and 256s would reproduce that failure exactly, so 47k, 83k,
+93k, 117k and 141k carry the weight and the tier values are only there as a control.
+
+### The silence caveat, measured rather than asserted
+
+This repository's library fixtures are one second of silence. Silence gives a VBR encoder almost
+nothing to encode, so a bitrate read from it describes the encoder's floor rather than any
+recording, and a parity result measured on silence would look clean for reasons that have nothing to
+do with audio. So this matrix is generated from **pink noise**, and it builds a silence arm
+alongside it so the distortion is a number rather than a disclaimer:
+
+| arm | median bitrate gap | worst |
+| --- | --- | --- |
+| pink noise | 1.5% | 242% |
+| silence | 68.9% | 4792% |
+
+The report prints per-arm agreement for every field, so no arm can carry a headline on its own —
+and the two arms turn out to disagree about *which files* disagree, which is the sharper version of
+the point. On pink noise, the VBR MP3s with an intact Xing header read within 36 ms and the
+stripped-Xing one is off by 13 seconds. On silence it inverts: the stripped-Xing file reads
+correctly and the three intact VBR MP3s come back as 11.44 s against a real 20 s. Neither arm on its
+own finds both defects.
+
+**This is still synthetic audio.** Pink noise is broadband and incompressible, which is the property
+that matters for a bitrate reading, but it is not speech; the numbers below are a floor on the
+disagreement, not a substitute for running `--corpus` over a real library.
+
+### What was measured
+
+64 files (32 recipes, two signal arms), ffprobe 8.0.1 against TagLibSharp 2.3.0:
+
+| field | exact | within tolerance | verdict |
+| --- | --- | --- | --- |
+| duration | 55% | 92% | usable; the misses are VBR MP3 |
+| bitrate | 0% | 39% | **not a drop-in** |
+| quality rung (derived) | 98% | — | the bitrate gap changes a decision on 1 of 64 |
+| sample rate | 97% | — | usable; Opus is the exception |
+| channels | 100% | — | drop-in |
+| container | 78% | — | different, and arguably more correct |
+| codec | 100% | — | drop-in |
+| title / disc / year | 100% | — | drop-in |
+| artist / album / album artist / track | 97% | — | usable; WAV is the exception |
+
+Tolerances are one second and 1% for duration, and 3 kbit/s and 5% for bitrate. The 3 kbit/s is not
+arbitrary: it is one kbit/s of TagLib# rounding plus the container and tag overhead ffprobe folds
+into `format.bit_rate`, which measured between 1.3 and 2.6 kbit/s on MP4 across this matrix.
+
+**Bitrate never matches exactly, and it cannot.** TagLib# reports whole kbit/s and has no finer
+resolution, while Listenarr reads `format.bit_rate` in bit/s. Four distinct mechanisms, not one:
+
+1. **Opus: TagLib# reports no bitrate at all.** `AudioBitrate` is 0 on all ten Opus files, against
+   48 to 89 kbit/s from ffprobe. This is the one that would need a decision rather than a rounding
+   rule.
+2. **Ogg Vorbis: TagLib# reports the header's nominal bitrate, ffprobe the actual average.** 80
+   against 68.5, 112 against 99.5, 120 against 106.5, 83 against 73 kbit/s — 10 to 13.5 kbit/s
+   apart, which is 12 to 17 percent of what ffprobe reported.
+3. **MP4: TagLib# reports the audio stream, Listenarr reads the whole container.** A consistent 1.3
+   to 2.6 kbit/s of container and tag overhead.
+4. **An MP3 with no Xing header: TagLib# extrapolates from the first frame.** 224 kbit/s and 5.48 s
+   against ffprobe's 65 kbit/s and 18.77 s. Both readers are wrong about a 20-second file; TagLib#
+   is wrong by more.
+
+Pushing both bitrates through Listenarr's own `QualityMatcher` arithmetic and the default profile's
+ladder is what turns that into a decision: **63 of 64 files land on the same quality rung.** The
+one that does not is the stripped-Xing MP3. Note the caveat the tool prints with that number — the
+default profile seeds no VBR rung, so a file with no readable bitrate falls to the worst rung either
+way; add a VBR rung and Opus starts to diverge.
+
+Duration is a smaller story than 55% suggests. On the noise arm TagLib# runs 36 to 110 ms *longer*
+than ffprobe on every MP3 (it counts the encoder delay and padding frames ffprobe trims) and 13 ms
+shorter on every Opus, all of it inside a second. The real duration failures are the four VBR MP3
+cases described above, and which four they are depends on the arm.
+
+Two more, both worth knowing before anyone calls the tag fields settled:
+
+- **Container disagrees on 14 of 64, and TagLib# is arguably right.** Listenarr splits ffprobe's
+  `format_name` on a comma and keeps the first piece, so an `.m4a` reports as container `MOV`; only
+  `.m4b` is rescued, and it is rescued by file extension rather than by content. TagLib# says `M4A`.
+  Likewise `.opus` is `OGG` today and `OPUS` under TagLib#.
+- **WAV is where every tag disagreement lives.** TagLib#'s RIFF INFO reader puts `IART` into
+  `AlbumArtists` rather than `Performers`, and does not surface album or track from the INFO chunk.
+  All eight tag-field disagreements are that one file in each arm. Every other container agreed on
+  every tag.
+
+### The honest verdict
+
+For **duration, sample rate, channels, codec, title, artist, album, album artist, track, disc and
+year**, TagLib# looks like a drop-in on this matrix. For **container** it disagrees in a way that is
+probably a fix rather than a regression, but it is still a behaviour change. For **bitrate** it is
+not a drop-in: the integers never match, and on Opus there is no number to match at all.
+
+Whether that blocks deleting the ffprobe download is a judgement about Opus and about VBR quality
+rungs, not about the other eleven fields. What this harness contributes is the measurement, on a
+matrix built so that the answer could come out badly.
+
 ## Library layouts — generate one that matches your tool
 
 `--layout <name>` produces a library in a single on-disk convention, so you can mirror whatever
@@ -736,6 +879,8 @@ tools/validate_*.sh         the narrower runtime checks, one behaviour each
 tools/check_duplicate_*.sh  both ASINs of each twin pair, against a live instance
 tools/*_ffbinary.py         package and install pinned ffmpeg-family binaries
 tools/ffmpeg_harness.py     the one verified-extract path everything above shares
+tools/taglib_parity.py      TagLib# vs ffprobe, per field, over a generated or real corpus
+tools/taglib_probe/         the dotnet console probe it drives, pinned to Listenarr's TagLibSharp
 tests/                      the test suite
 TESTING.md                  how the suite is organised; the verdict-contract convention
 ```
@@ -752,7 +897,10 @@ shell.
 Requires Python 3.11+ and `mutagen`. ffmpeg on `PATH` is needed if you pass `--ffmpeg-source system`
 or run `make_tag_fixtures.py`, since the generator otherwise provisions its own pinned build;
 ffprobe on `PATH` is what the test suite reads generated tags back with, and the audio tests skip
-themselves without it. Development extras (`pip install -e '.[dev]'`) add pytest, ruff and mypy; `python -m pytest` runs the suite. This is a conformance harness, so a subset of the tests are adversarial against the tool's own verdict — see [TESTING.md](TESTING.md) and `pytest -m contract`.
+themselves without it. `taglib_parity.py` additionally needs a **.NET SDK** to build its probe; it
+looks on `PATH`, then `$DOTNET`, then `~/.dotnet/dotnet`, and `--dotnet` overrides all three. Its
+tests skip rather than pass when no SDK is found, since a parity run that cannot build the probe has
+measured nothing. Development extras (`pip install -e '.[dev]'`) add pytest, ruff and mypy; `python -m pytest` runs the suite. This is a conformance harness, so a subset of the tests are adversarial against the tool's own verdict — see [TESTING.md](TESTING.md) and `pytest -m contract`.
 
 ## Provenance and licence
 

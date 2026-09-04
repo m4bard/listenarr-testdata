@@ -105,7 +105,7 @@ def ambiguous_seeds() -> dict[str, list[str]]:
     books = corpus_books()
     by_asin = {book["asin"]: book for book in books}
     found: dict[str, list[str]] = {}
-    for asin, want_author, want_title, _tags in build_corpus.SEEDS:
+    for asin, want_author, want_title, _tags, _librivox in build_corpus.SEEDS:
         own = by_asin.get(asin)
         if own is None:
             continue

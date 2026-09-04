@@ -976,6 +976,34 @@ def twin_differs(spec: HazardSpec, meta: Meta) -> bool:
     return (first.title, tuple(first.authors)) != (second.title, tuple(second.authors))
 
 
+def hazard_for(
+    hazards: list[str], index: int, meta: Meta, twins_wanted: set[str]
+) -> HazardSpec:
+    """Pick this book's hazard, honouring the round robin unless a collision would be lost.
+
+    Hazards are handed out round robin so the assignment is reproducible and independent of
+    the corpus. A collision hazard is the exception, because it needs a book it can actually
+    collide: NFC and NFD are the same string unless the title carries a combining mark, and
+    only a handful of titles do. Leaving that to whichever slot the round robin lands on means
+    a run can contain the hazard and no collision at all, and which run that is depends on how
+    many books happen to be in the corpus — dropping three unrelated entries was enough to lose
+    the NFC/NFD pair entirely.
+
+    So a book whose round-robin hazard cannot collide is offered to a collision hazard that
+    still needs a pair. At most one book per collision hazard is diverted this way, the choice
+    is the first eligible book in the same deterministic order, and a book that would already
+    have produced a pair is never taken off it.
+    """
+    chosen = HAZARDS_BY_KEY[hazards[index % len(hazards)]]
+    if chosen.twin and twin_differs(chosen, meta):
+        return chosen
+    for key in hazards:
+        candidate = HAZARDS_BY_KEY[key]
+        if key in twins_wanted and twin_differs(candidate, meta):
+            return candidate
+    return chosen
+
+
 def claim(
     path: pathlib.Path,
     unit: Unit,
@@ -1091,6 +1119,8 @@ def generate(
     skipped: list[dict[str, str]] = []
     dir_owner: dict[str, Unit] = {}
     file_owner: dict[str, Unit] = {}
+    # Collision hazards still owed a pair. Emptied as each one finds a book it can collide.
+    twins_wanted = {key for key in hazards if HAZARDS_BY_KEY[key].twin}
 
     for copy_index in range(repeat):
         for index, book in enumerate(corpus):
@@ -1138,10 +1168,11 @@ def generate(
             # --- hazard: the twin emission is what makes a collision a collision
             hazard_keys: list[str | None] = [None]
             if hazards:
-                chosen = HAZARDS_BY_KEY[hazards[(index + copy_index) % len(hazards)]]
+                chosen = hazard_for(hazards, index + copy_index, path, twins_wanted)
                 hazard_keys = [chosen.key]
                 if chosen.twin and twin_differs(chosen, path):
                     hazard_keys.append(chosen.key)
+                    twins_wanted.discard(chosen.key)
 
             for emission, hazard_key in enumerate(hazard_keys):
                 # The folder is built from the TRUTH; only the tags carry the transform.

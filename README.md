@@ -609,7 +609,11 @@ version-detecting adapter.
 
 ## Why the data is trustworthy
 
-Every book is real, in the public domain, and has audio freely available from LibriVox. Every ASIN in `corpus/corpus.json` is **machine-verified against live Audible metadata** — `tools/build_corpus.py` fetches each one from [Audnex](https://api.audnex.us), checks it resolves to the book we expected, and refuses to write an entry that does not. No ASIN in this repository was ever typed by hand or taken on trust; a plausible-looking `B0XXXXXXXX` is trivial to invent and impossible to spot by eye.
+Every book is real, and every ASIN in `corpus/corpus.json` is **machine-verified against live Audible metadata** — `tools/build_corpus.py` fetches each one from [Audnex](https://api.audnex.us), checks it resolves to the book we expected, and refuses to write an entry that does not. No ASIN in this repository was ever typed by hand or taken on trust; a plausible-looking `B0XXXXXXXX` is trivial to invent and impossible to spot by eye.
+
+The public-domain claim is checked the same way rather than asserted. Every seed also names a [LibriVox](https://librivox.org) project id, the build fetches that project and confirms it is the work the seed says it is, and an entry whose recording does not resolve is refused along with the rest of the run. LibriVox publishes only public-domain texts and settles the rights question before a project is opened, so a recorded work is one where the analysis has been done by people with a reason to get it right. A seed whose second credit is a modern contributor — a children's adaptation, a commentary, a staged production — does not belong here whatever LibriVox has of the underlying text, because what is being sold is that contribution and it is not out of copyright. Three were removed on those grounds.
+
+Read the LibriVox pin as a claim about the **work**, not about the particular Audible edition. Six entries pin a recording in another language, because LibriVox has no Russian *War and Peace* and no Russian *Anna Karenina*: the work is established as public domain, and free audio in that edition's own language is not. Those entries carry `"librivox_same_language": false` and the build prints them at the end of every run, so the difference is visible rather than smoothed over.
 
 Re-verify the whole corpus against reality at any time:
 
@@ -621,7 +625,7 @@ It has already earned its keep: it caught an ASIN that had gone dead after previ
 
 Trustworthy is not the same as complete. [SCOPE.md](SCOPE.md) is the other half: what this corpus can reproduce, what it cannot, and which of the three kinds of gap you are looking at when a case will not reproduce — because the remedies are different and picking the wrong one wastes the report.
 
-The corpus is 123 public-domain works covering 49 distinct failure modes, plus two region-lock proofs.
+The corpus is 120 public-domain works covering 49 distinct failure modes, plus two region-lock proofs.
 
 Each book carries the failure-mode tags it is useful for, and the generator can select on them:
 `--tag title-collision,author-collision` puts only the books that exercise those modes on disk, the
@@ -725,7 +729,7 @@ That last one deserves saying plainly: **embedded tags are attacker-controlled i
 ## Layout
 
 ```
-corpus/corpus.json          123 verified books, generated — do not hand-edit
+corpus/corpus.json          120 verified books, generated — do not hand-edit
 corpus/cases.py             the seven axes and fourteen scenarios. Start here.
 tools/build_corpus.py       fetches and verifies every ASIN against live metadata
 tools/generate_library.py   the generator
@@ -759,6 +763,6 @@ themselves without it. Development extras (`pip install -e '.[dev]'`) add pytest
 
 ## Provenance and licence
 
-The code is MIT. The metadata — titles, authors, narrators, ASINs, series positions — is factual, and is fetched from Audnex rather than authored here. The books themselves are in the public domain, and their recordings are freely available from LibriVox.
+The code is MIT. The metadata — titles, authors, narrators, ASINs, series positions — is factual, and is fetched from Audnex rather than authored here. The works themselves are in the public domain, and the build proves it by pinning each one to a LibriVox recording it fetches and checks; for six entries that recording is in another language than the edition the ASIN names.
 
 The generated audio is one second of digital silence, synthesized on your machine at generation time. It is not a recording of anything.

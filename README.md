@@ -619,6 +619,8 @@ python3 tools/build_corpus.py --check   # non-zero exit if anything drifted or d
 
 It has already earned its keep: it caught an ASIN that had gone dead after previously being reported as verified.
 
+Trustworthy is not the same as complete. [SCOPE.md](SCOPE.md) is the other half: what this corpus can reproduce, what it cannot, and which of the three kinds of gap you are looking at when a case will not reproduce — because the remedies are different and picking the wrong one wastes the report.
+
 The corpus is 123 public-domain works covering 49 distinct failure modes, plus two region-lock proofs.
 
 Each book carries the failure-mode tags it is useful for, and the generator can select on them:
@@ -738,6 +740,7 @@ tools/*_ffbinary.py         package and install pinned ffmpeg-family binaries
 tools/ffmpeg_harness.py     the one verified-extract path everything above shares
 tests/                      the test suite
 TESTING.md                  how the suite is organised; the verdict-contract convention
+SCOPE.md                    what the corpus can and cannot reproduce, and the remedy for each
 ```
 
 `tools/attribution_report.py` and `tools/size_report.py` are the judging halves of

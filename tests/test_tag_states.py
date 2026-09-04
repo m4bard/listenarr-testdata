@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "corpus"))
 
 import cases
 from generate_library import (
+    AUTHOR_VARIANTS,
     HAZARDS_BY_KEY,
     Meta,
     apply_hazard,
@@ -188,6 +189,52 @@ class TestAuthorVariants:
 
     def test_a_plain_ascii_name_has_no_variant(self) -> None:
         assert author_variant("Jane Austen") is None
+
+    def test_the_variant_of_a_parenthesised_pseudonym_is_the_pseudonym(self) -> None:
+        # The corpus credits Munro as 'Hector Hugh Munro (Saki)', which is the string the
+        # generator is handed. Substituting the real name INTO it produced
+        # 'Hector Hugh Munro (Hector Hugh Munro)' — a string no catalogue would ever credit,
+        # so a scanner failing on it proved nothing.
+        assert author_variant("Hector Hugh Munro (Saki)") == "Saki"
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("Лев Толстой", "Leo Tolstoy"),
+            ("Федор Достоевский", "Fyodor Dostoevsky"),
+            ("芥川 龍之介", "Ryunosuke Akutagawa"),
+        ],
+    )
+    def test_a_non_latin_name_transliterates_rather_than_losing_its_marks(
+        self, name: str, expected: str
+    ) -> None:
+        # Folding combining marks off Cyrillic turns й into и: 'Лев Толстой' became
+        # 'Лев Толстои'. That is a misspelling, not a credited variant, and the corpus already
+        # holds the true one — it credits the same two authors in Latin script on other books.
+        assert author_variant(name) == expected
+
+    def test_an_untabled_cyrillic_name_is_left_alone_rather_than_folded(self) -> None:
+        # The three names above are all matched by a table rule, so they never reach the
+        # fallback and cannot prove it is script-aware. This one has no rule: the honest
+        # answer is that we know no variant, not 'Николаи Гоголь'.
+        assert author_variant("Николай Гоголь") is None
+
+    def test_no_rule_in_the_table_is_dead(self) -> None:
+        # A rule whose left-hand side matches no credited author in the corpus generates
+        # nothing, and does so silently. Three were dead when this test was written.
+        credited = {author for book in CORPUS for author in book["authors"]}
+        dead = [
+            canonical
+            for canonical, _variant in AUTHOR_VARIANTS
+            if not any(canonical.lower() in name.lower() for name in credited)
+        ]
+        assert dead == [], f"AUTHOR_VARIANTS rules matching no corpus author: {dead}"
+
+    def test_every_corpus_author_with_a_rule_gets_a_different_name_back(self) -> None:
+        credited = sorted({author for book in CORPUS for author in book["authors"]})
+        for name in credited:
+            variant = author_variant(name)
+            assert variant != name, f"{name!r} varies to itself, which models nothing"
 
     def test_numeral_variant_returns_none_when_there_is_none(self) -> None:
         assert numeral_variant("Persuasion") is None

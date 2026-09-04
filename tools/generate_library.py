@@ -193,28 +193,46 @@ class Meta:
         )
 
 
+# (matches this author, credit them as this instead) — all four kinds named in cases.py:
+# initials spacing, diacritic folding, transliteration, pseudonym <-> real name.
+#
+# The left-hand side must match a name the CORPUS actually credits, not the name we think of
+# the author by. Three rules here matched nothing for months and so generated nothing:
+# 'J. M. Barrie' (the corpus credits 'J.M. Barrie' and 'James M. Barrie'), 'Karel Čapek'
+# (Audnex returns the unaccented 'Karel Capek') and 'Dostoyevsky' (the corpus carries only the
+# 'Dostoevsky' spelling, which the rule above it already varies). A hazard that silently fails
+# to generate is a hazard nobody tests, so TestAuthorVariants asserts every rule is live.
+#
+# First match wins, so a rule for a name that CONTAINS another must precede it: the
+# 'Hector Hugh Munro (Saki)' rule sits above the bare 'Saki' one.
 AUTHOR_VARIANTS: list[tuple[str, str]] = [
-    # (matches this author, credit them as this instead) — all four kinds named in cases.py:
-    # initials spacing, diacritic folding, transliteration, pseudonym <-> real name.
     ("H. G. Wells", "H.G. Wells"),
     ("E. M. Forster", "E.M. Forster"),
     ("H. P. Lovecraft", "HP Lovecraft"),
     ("M. R. James", "M.R. James"),
-    ("J. M. Barrie", "J.M. Barrie"),
+    ("J.M. Barrie", "J. M. Barrie"),
     ("Émile Zola", "Emile Zola"),
-    ("Karel Čapek", "Karel Capek"),
+    ("Karel Capek", "Karel Čapek"),
     ("Charlotte Brontë", "Charlotte Bronte"),
     ("Emily Brontë", "Emily Bronte"),
     ("Anne Brontë", "Anne Bronte"),
     ("Fyodor Dostoevsky", "Fyodor Dostoyevsky"),
-    ("Dostoyevsky", "Dostoevsky"),
     ("Leo Tolstoy", "Lev Tolstoi"),
     ("Mark Twain", "Samuel Clemens"),
     ("George Eliot", "Mary Ann Evans"),
+    ("Hector Hugh Munro (Saki)", "Saki"),
     ("Saki", "Hector Hugh Munro"),
     ("O. Henry", "William Sydney Porter"),
     ("Voltaire", "François-Marie Arouet"),
     ("Maurice Leblanc", "Maurice Marie Émile Leblanc"),
+    # Transliteration, the one axis a script-blind fallback cannot do. Every right-hand side
+    # here is a spelling Audible really credits: the first two appear verbatim on other
+    # records in this corpus, and Akutagawa is credited as 'Ryunosuke Akutagawa',
+    # 'Ryūnosuke Akutagawa', 'Ryûnosuke Akutagawa' and 'Akutagawa Ryunosuke' across four
+    # live listings.
+    ("Лев Толстой", "Leo Tolstoy"),
+    ("Федор Достоевский", "Fyodor Dostoevsky"),
+    ("芥川 龍之介", "Ryunosuke Akutagawa"),
 ]
 
 # Translators really credited on these works. `translator-as-author` writes one of these into
@@ -243,12 +261,24 @@ NUMERAL_VARIANTS: list[tuple[str, str]] = [
 ]
 
 
+def is_latin(name: str) -> bool:
+    """True when every letter in the name is Latin, so folding its marks stays a real name."""
+    return all(
+        "LATIN" in unicodedata.name(ch, "") for ch in name if unicodedata.category(ch)[0] == "L"
+    )
+
+
 def author_variant(name: str) -> str | None:
     """Credit the same author under a different spelling, or None if we know no variant."""
     for canonical, variant in AUTHOR_VARIANTS:
         if canonical.lower() in name.lower():
             return name.replace(canonical, variant) if canonical in name else variant
-    # Fall back to a generic but realistic transform: fold diacritics.
+    # Fall back to a generic but realistic transform: fold diacritics. Only for Latin script.
+    # A combining mark is part of the letter outside it, so folding 'Лев Толстой' yields
+    # 'Лев Толстои' — й stripped to и, a misspelling no catalogue would ever credit. The real
+    # variant of a Cyrillic or CJK name is its transliteration, which is table work above.
+    if not is_latin(name):
+        return None
     folded = "".join(
         ch for ch in unicodedata.normalize("NFD", name) if unicodedata.category(ch) != "Mn"
     )

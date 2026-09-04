@@ -119,6 +119,7 @@ LIBRIVOX_RECORDINGS: dict[str, tuple[str, str]] = {
     "755": ("Dostoyevsky", "Crime and Punishment"),
     "761": ("Voltaire", "Candide"),
     "788": ("Eliot", "Middlemarch"),
+    "816": ("Barrie", "Peter Pan"),
     "817": ("Wells", "Time Machine"),
     "830": ("Haggard", "Allan Quatermain"),
     "849": ("Alcott", "Little Men"),
@@ -206,9 +207,31 @@ SEEDS: list[tuple[str, str, str, list[str], str]] = [
     ("B003750OH4", "Alcott", "Little Men", ["title-collision", "series"], "849"),
     ("B002V1CL4E", "MacDonald", "Princess", ["title-collision"], "1004"),
     ("B003KS7JYO", "Trollope", "Phineas", ["title-collision", "series"], "1679"),
+    # --- Barrie: four credited spellings of one author -----------------------
+    #
+    # PUBLIC-DOMAIN NOTE, applying to all four Barrie seeds below. The texts are public
+    # domain: Barrie died in 1937, and Peter Pan in Kensington Gardens (1906) and Peter and
+    # Wendy (1911) are long out of copyright. Separately, Great Ormond Street Hospital holds
+    # a perpetual entitlement to royalties on certain UK uses of Peter Pan under Schedule 6
+    # of the Copyright, Designs and Patents Act 1988. This repository stores metadata and
+    # generates one second of synthesized silence, so nothing here engages that entitlement.
+    # Recorded so a reader who knows about Schedule 6 can see that we did too.
+    #
+    # Three of the four spellings differ from each other ONLY in punctuation, which is the
+    # class a normalising fix collapses:
+    #     B078X1NX28  'J. M. Barrie'      B084J9S79P  'J.M. Barrie'
+    #     B002V1M36U  'J M Barrie'
+    # The first two are the same work, Peter and Wendy, under two ASINs, so between those two
+    # nothing whatsoever differs except a space and the position of two dots. The fourth,
+    # B0C6FJ6L34 'James M. Barrie', is abbreviation drift, which no punctuation rule collapses
+    # and which is kept precisely as the case that shows where such a fix stops.
     ("B0C6FJ6L34", "Barrie", "Peter Pan", ["title-collision", "author-variant"], "3008"),
     ("B084J9S79P", "Barrie", "Peter and Wendy",
-     ["title-collision", "author-variant", "series"], "5721"),
+     ["title-collision", "author-variant", "author-punctuation", "series"], "5721"),
+    ("B078X1NX28", "Barrie", "Peter and Wendy",
+     ["title-collision", "author-variant", "author-punctuation"], "5721"),
+    ("B002V1M36U", "Barrie", "Peter Pan",
+     ["title-collision", "author-variant", "author-punctuation", "full-cast"], "816"),
     ("B01BKS3DPE", "Burroughs", "Gods of Mars", ["title-collision", "series"], "382"),
     ("B01DPXZKPI", "Burroughs", "Warlord of Mars", ["title-collision", "series"], "490"),
     # --- subtitle / decoration: TRUE matches a fix must not break ------------
@@ -232,6 +255,7 @@ SEEDS: list[tuple[str, str, str, list[str], str]] = [
     ("B0038G2TFW", "Dumas", "Iron Mask", ["series", "series-order"], "2770"),
     ("B002V1CJIW", "Verne", "Earth to the Moon", ["series"], "594"),
     ("B0DKK1PKN7", "Verne", "Around the Moon", ["title-variant"], "1078"),
+    # Both spelling-critical: "L. M. Montgomery" against "Lucy Maud Montgomery".
     ("B073JR7W68", "Montgomery", "Green Gables", ["series", "author-variant"], "146"),
     ("B002V8L2UQ", "Montgomery", "Avonlea", ["series", "author-variant"], "145"),
     ("B07TKCFMD1", "Lofting", "Story of Doctor Dolittle", ["series"], "416"),
@@ -244,6 +268,7 @@ SEEDS: list[tuple[str, str, str, list[str], str]] = [
     ("B01COOZ5C2", "Bront", "Jane Eyre", ["author-collision", "diacritic"], "133"),
     ("B0186DGBCI", "Bront", "Wuthering", ["author-collision", "diacritic"], "911"),
     ("B002V8N2QS", "Bront", "Agnes Grey", ["author-collision", "diacritic"], "1750"),
+    # Spelling-critical: the only record crediting "Brothers Grimm" rather than "Brüder".
     ("B01DPV47HM", "Grimm", "Fairy Tales", ["author-collision", "multi-author"], "375"),
     ("B01ATTZF38", "James", "Turn of the Screw", ["author-collision"], "431"),
     ("B004FOLXEO", "James", "Antiquary", ["author-collision", "author-initials"], "383"),
@@ -291,6 +316,7 @@ SEEDS: list[tuple[str, str, str, list[str], str]] = [
     ("B00EOO99WS", "Goethe", "Faust", ["non-english", "multi-asin"], "4998"),
     ("B0DZXWPQNW", "Goethe", "komplette Hörbuch", ["non-english", "multi-asin"], "4998"),
     ("B00JQEQFL4", "Goethe", "Faust", ["non-english", "abridged", "multi-asin"], "4998"),
+    # Spelling-critical: the only Goethe record that drops the "von".
     ("B00APWL9E4", "Goethe", "Faust", ["non-english", "abridged", "multi-asin"], "4998"),
     ("B01IDLCAMI", "Goethe", "Faust I + II", ["non-english", "abridged", "multi-asin"], "4998"),
     ("B0B1QKNWH3", "Goethe", "Tragödie Erster Teil",
@@ -347,6 +373,69 @@ REGIONAL_SEEDS: list[tuple[str, str, str, str, list[str], str]] = [
 ]
 
 
+# ASIN -> (the exact credited author string, why THIS seed depends on it)
+#
+# A seed declares itself spelling-critical by appearing here, and each of the seeds below
+# carries a comment at its own line saying so, because a declaration you can only find by
+# reading a table three hundred lines away is one an editor will not know they broke.
+#
+# The author check on an ordinary seed is a substring: "Barrie" is enough, because what such a
+# seed asserts is which work the ASIN is, and a publisher retitling the credit from
+# "H. G. Wells" to "H.G. Wells" changes nothing it claims. Matching exactly everywhere would
+# fail the build on harmless edits and teach people to loosen the check.
+#
+# For the seeds below the exact string IS the claim. Each is the SOLE record in the corpus
+# carrying its spelling, so a publisher edit to any one of them destroys an author-drift pair
+# outright, and the substring check would keep passing while it happened. That is the failure
+# this table exists to make loud.
+#
+# Sole carrier is the rule, and it is why the other side of two of these pairs is absent:
+# 'Johann Wolfgang von Goethe' is credited on seven records and 'Brüder Grimm' on four, so
+# those pairs survive an edit to any single one of them and pinning one record would assert
+# more than is true.
+SPELLING_CRITICAL: dict[str, tuple[str, str]] = {
+    "B078X1NX28": (
+        "J. M. Barrie",
+        "with B084J9S79P ('J.M. Barrie') it is the corpus's only pair of records that are the "
+        "same work and differ ONLY in author punctuation",
+    ),
+    "B084J9S79P": (
+        "J.M. Barrie",
+        "with B078X1NX28 ('J. M. Barrie') it is the corpus's only pair of records that are the "
+        "same work and differ ONLY in author punctuation",
+    ),
+    "B002V1M36U": (
+        "J M Barrie",
+        "the only record carrying the unpunctuated initials, which is the third of the three "
+        "spellings a punctuation rule has to fold together",
+    ),
+    "B0C6FJ6L34": (
+        "James M. Barrie",
+        "the abbreviation case that punctuation folding does NOT collapse, kept to show where "
+        "such a fix stops",
+    ),
+    "B073JR7W68": (
+        "L. M. Montgomery",
+        "with B002V8L2UQ ('Lucy Maud Montgomery') it is one of the corpus's four author-drift "
+        "pairs",
+    ),
+    "B002V8L2UQ": (
+        "Lucy Maud Montgomery",
+        "with B073JR7W68 ('L. M. Montgomery') it is one of the corpus's four author-drift pairs",
+    ),
+    "B00APWL9E4": (
+        "Johann Wolfgang Goethe",
+        "the only record that drops the nobiliary particle; every other Goethe record credits "
+        "'Johann Wolfgang von Goethe', so this one alone carries the particle-drift pair",
+    ),
+    "B01DPV47HM": (
+        "Brothers Grimm",
+        "the only record crediting the translated form; every other Grimm record credits "
+        "'Brüder Grimm', so this one alone carries the translated-name pair",
+    ),
+}
+
+
 def fetch(asin: str, region: str = DEFAULT_REGION) -> tuple[dict | None, str | None]:
     url = AUDNEX.format(asin=asin)
     if region != DEFAULT_REGION:
@@ -375,6 +464,30 @@ def check_fragment(asin: str, want_author: str, want_title: str) -> str | None:
         return None
     return (f"{asin}: {' and '.join(blank)}, which matches every book; "
             "give it a fragment that names the work")
+
+
+def check_spelling(asin: str, authors: list[str]) -> str | None:
+    """Refuse a spelling-critical seed whose credited author string has changed at all.
+
+    Returns why it was refused, or None when the seed is not spelling-critical or still
+    carries the string it was chosen for. The substring check every seed gets asks "is this
+    the right work"; this asks "is this still the right SPELLING", which for these seeds is
+    the only reason they are in the corpus.
+    """
+    expected = SPELLING_CRITICAL.get(asin)
+    if expected is None:
+        return None
+    want, because = expected
+    if want in authors:
+        return None
+    return (
+        f"{asin}: credited author is now {authors!r}, and this seed requires exactly {want!r}. "
+        f"It is spelling-critical because {because}. "
+        "Do NOT relax this check to make the build pass: without that exact string the case "
+        "it encodes is gone from the corpus and nothing here reproduces it any more. Find "
+        "another ASIN still carrying the spelling, or delete the seed and say in the commit "
+        "message which case the corpus no longer covers."
+    )
 
 
 def fetch_librivox(book_id: str, attempts: int = 3) -> tuple[dict | None, str | None]:
@@ -458,7 +571,7 @@ def verify_librivox() -> tuple[dict[str, dict], list[str]]:
             "language": data.get("language") or "",
             "url": data.get("url_librivox") or "",
         }
-        print(f"  ok        lv:{book_id}  {title}")
+        print(f"  ok        lv:{book_id}  {title}", flush=True)
 
     return verified, problems
 
@@ -487,6 +600,20 @@ def check_librivox_table() -> list[str]:
         if book_id not in set(pinned)
     ]
     return problems
+
+
+def check_spelling_table() -> list[str]:
+    """Refuse a spelling-critical entry naming an ASIN no seed uses.
+
+    check_spelling() only ever runs for ASINs that reach build(), so an entry for a seed that
+    has since been removed would sit here asserting nothing while looking like protection.
+    """
+    seeded = {seed[0] for seed in SEEDS}
+    return [
+        f"{asin}: in SPELLING_CRITICAL but no seed uses it, so its spelling is never checked"
+        for asin in SPELLING_CRITICAL
+        if asin not in seeded
+    ]
 
 
 def librivox_fields(record: dict, language: str | None) -> dict:
@@ -524,7 +651,7 @@ def check_region_lock(librivox: dict[str, dict]) -> tuple[list[dict], list[str]]
         unusable = check_fragment(asin, want_author, want_title)
         if unusable is not None:
             problems.append(unusable)
-            print(f"  BAD       {asin}  (nothing expected of it)")
+            print(f"  BAD       {asin}  (nothing expected of it)", flush=True)
             continue
 
         recording = librivox.get(book_id)
@@ -533,7 +660,7 @@ def check_region_lock(librivox: dict[str, dict]) -> tuple[list[dict], list[str]]
                 f"{asin}: its librivox pin {book_id} did not verify, "
                 "so its public-domain status is unproven"
             )
-            print(f"  BAD       {asin}  (librivox {book_id} unverified)")
+            print(f"  BAD       {asin}  (librivox {book_id} unverified)", flush=True)
             continue
 
         row: dict = {"asin": asin, "home_region": home, "tags": tags, "visibility": {}}
@@ -571,7 +698,7 @@ def check_region_lock(librivox: dict[str, dict]) -> tuple[list[dict], list[str]]
 
         visible = [r for r, v in row["visibility"].items() if v == "ok"]
         mark = "ok  " if visible == [home] else "BAD "
-        print(f"  {mark}      {asin}  [{home}]  visible in: {visible or 'nowhere'}")
+        print(f"  {mark}      {asin}  [{home}]  visible in: {visible or 'nowhere'}", flush=True)
         proofs.append(row)
 
     return proofs, problems
@@ -620,6 +747,13 @@ def build(librivox: dict[str, dict]) -> tuple[list[dict], list[str]]:
             time.sleep(0.25)
             continue
 
+        misspelled = check_spelling(asin, authors)
+        if misspelled is not None:
+            problems.append(misspelled)
+            print(f"  SPELLING  {asin}  {joined}", file=sys.stderr)
+            time.sleep(0.25)
+            continue
+
         books.append(
             {
                 "asin": asin,
@@ -638,7 +772,7 @@ def build(librivox: dict[str, dict]) -> tuple[list[dict], list[str]]:
             }
         )
         pos = f" [{series.get('name')} #{series.get('position')}]" if series.get("name") else ""
-        print(f"  ok        {asin}  {title}{pos}")
+        print(f"  ok        {asin}  {title}{pos}", flush=True)
         time.sleep(0.25)
 
     return books, problems
@@ -653,7 +787,7 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    problems = check_librivox_table()
+    problems = check_librivox_table() + check_spelling_table()
 
     print(
         f"verifying {len(LIBRIVOX_RECORDINGS)} recordings against librivox.org ...",

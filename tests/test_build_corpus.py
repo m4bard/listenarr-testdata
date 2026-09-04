@@ -276,6 +276,10 @@ class TestAnEmptyExpectationIsRefused:
         monkeypatch.setattr(build_corpus, "ROOT", tmp_path)
         monkeypatch.setattr(build_corpus, "REGIONAL_SEEDS", [])
         monkeypatch.setattr(build_corpus, "LIBRIVOX_RECORDINGS", ONE_RECORDING)
+        # SPELLING_CRITICAL is keyed to SEEDS the same way LIBRIVOX_RECORDINGS is, and
+        # these tests replace SEEDS with one fixture seed. Leaving the committed table in
+        # place would fail every run here on entries for seeds this fixture removed.
+        monkeypatch.setattr(build_corpus, "SPELLING_CRITICAL", {})
         monkeypatch.setattr(sys, "argv", ["build_corpus.py"])
         monkeypatch.setattr(
             build_corpus, "SEEDS", [("B0000000AA", "Doyle", "", ["canonical"], "3664")]
@@ -387,6 +391,10 @@ class TestTheRunRefusesToWrite:
         monkeypatch.setattr(build_corpus, "ROOT", tmp_path)
         monkeypatch.setattr(build_corpus, "REGIONAL_SEEDS", [])
         monkeypatch.setattr(build_corpus, "LIBRIVOX_RECORDINGS", ONE_RECORDING)
+        # SPELLING_CRITICAL is keyed to SEEDS the same way LIBRIVOX_RECORDINGS is, and
+        # these tests replace SEEDS with one fixture seed. Leaving the committed table in
+        # place would fail every run here on entries for seeds this fixture removed.
+        monkeypatch.setattr(build_corpus, "SPELLING_CRITICAL", {})
         monkeypatch.setattr(sys, "argv", ["build_corpus.py"])
 
     def test_a_clean_run_writes_the_corpus_and_exits_zero(
@@ -741,3 +749,100 @@ class TestTheTwoTablesCannotDrift:
             for book_id, (author, title) in build_corpus.LIBRIVOX_RECORDINGS.items()
         ]
         assert [problem for problem in unusable if problem is not None] == []
+
+
+@pytest.mark.contract
+class TestASpellingCriticalSeedRefusesADriftedCredit:
+    """The substring check asks which WORK an ASIN is. For a handful of seeds the exact
+    credited spelling is the entire reason they are in the corpus, and a publisher editing
+    'J. M. Barrie' to 'J.M. Barrie' would pass the substring check while destroying the only
+    punctuation-only drift pair the corpus has.
+    """
+
+    def test_the_chosen_spelling_is_accepted(self) -> None:
+        assert build_corpus.check_spelling("B078X1NX28", ["J. M. Barrie"]) is None
+
+    def test_a_seed_that_is_not_spelling_critical_is_not_judged(self) -> None:
+        assert build_corpus.check_spelling("B071S17YLK", ["Someone Else Entirely"]) is None
+
+    def test_punctuation_drift_is_refused(self) -> None:
+        problem = build_corpus.check_spelling("B078X1NX28", ["J.M. Barrie"])
+        assert problem is not None
+        assert "requires exactly 'J. M. Barrie'" in problem
+
+    def test_the_substring_check_alone_would_have_missed_it(self) -> None:
+        """The gap this exists to close, asserted rather than described."""
+        drifted = "J.M. Barrie"
+        assert "barrie" in drifted.lower()          # the seed's substring check still passes
+        assert build_corpus.check_spelling("B078X1NX28", [drifted]) is not None
+
+    def test_the_refusal_says_why_this_seed_cares(self) -> None:
+        """So that whoever hits it does not simply relax the assertion."""
+        problem = build_corpus.check_spelling("B0C6FJ6L34", ["J. M. Barrie"])
+        assert problem is not None
+        assert "spelling-critical because" in problem
+        assert "Do NOT relax this check" in problem
+
+    def test_one_credit_among_several_is_enough(self) -> None:
+        assert build_corpus.check_spelling(
+            "B078X1NX28", ["J. M. Barrie", "Someone - translator"]
+        ) is None
+
+    def test_a_build_refuses_the_whole_corpus_over_one_drifted_spelling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seed = ("B0SPELLING", "Barrie", "Peter and Wendy", ["author-punctuation"], "3664")
+        monkeypatch.setattr(build_corpus, "SEEDS", [seed])
+        monkeypatch.setattr(build_corpus, "SPELLING_CRITICAL",
+                            {"B0SPELLING": ("J. M. Barrie", "the reason it was chosen")})
+        monkeypatch.setattr(build_corpus, "fetch", fake_fetch({
+            "B0SPELLING": {**AUDNEX_OK, "title": "Peter and Wendy",
+                           "authors": [{"name": "J.M. Barrie"}]},
+        }))
+        books, problems = build_corpus.build(LIBRIVOX_OK)
+        assert books == []
+        assert any("requires exactly 'J. M. Barrie'" in p for p in problems)
+
+    def test_an_entry_naming_no_seed_is_caught(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Otherwise it sits there looking like protection while asserting nothing."""
+        monkeypatch.setattr(build_corpus, "SEEDS", [SEED])
+        monkeypatch.setattr(build_corpus, "SPELLING_CRITICAL",
+                            {"B0GONE": ("Someone", "a seed that was removed")})
+        assert any("no seed uses it" in p for p in build_corpus.check_spelling_table())
+
+    def test_the_committed_table_names_only_real_seeds(self) -> None:
+        assert build_corpus.check_spelling_table() == []
+
+    def test_every_committed_entry_matches_what_the_corpus_holds(self) -> None:
+        """The table records what each seed's credited author IS, so it must agree with the
+        corpus that was actually built. Disagreement means one of them was edited alone.
+        """
+        corpus = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / "corpus" / "corpus.json")
+            .read_text()
+        )
+        by_asin = {book["asin"]: book for book in corpus["books"]}
+        for asin, (spelling, _why) in build_corpus.SPELLING_CRITICAL.items():
+            if asin in by_asin:
+                assert spelling in by_asin[asin]["authors"], (
+                    f"{asin}: SPELLING_CRITICAL expects {spelling!r} but corpus.json holds "
+                    f"{by_asin[asin]['authors']!r}"
+                )
+
+    def test_every_pinned_spelling_is_the_sole_carrier_of_it(self) -> None:
+        """The rule the table follows. A spelling several records carry survives an edit to
+        any one of them, so pinning one would assert more than is true.
+        """
+        corpus = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / "corpus" / "corpus.json")
+            .read_text()
+        )
+        carriers: dict[str, list[str]] = {}
+        for book in corpus["books"]:
+            for author in book["authors"]:
+                carriers.setdefault(author, []).append(book["asin"])
+        for asin, (spelling, _why) in build_corpus.SPELLING_CRITICAL.items():
+            if asin in {b["asin"] for b in corpus["books"]}:
+                assert carriers.get(spelling) == [asin], (
+                    f"{spelling!r} is carried by {carriers.get(spelling)}, not by {asin} alone"
+                )

@@ -18,11 +18,16 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from corpus import cases  # noqa: E402
-from tools.generate_library import generate  # noqa: E402
+# tools/ and corpus/ are flat script modules, not packages, and every other test in the
+# suite puts them on sys.path directly. Importing them as `corpus.cases` instead made
+# mypy resolve corpus/cases.py under two module names at once, which aborted the whole run.
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "corpus"))
+import cases
+from generate_library import generate
 
-TOOL = pathlib.Path(__file__).resolve().parents[1] / "tools" / "verify_scan.py"
+TOOL = ROOT / "tools" / "verify_scan.py"
 
 
 @pytest.fixture

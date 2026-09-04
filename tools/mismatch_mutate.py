@@ -32,7 +32,8 @@ FILE_STEM = "track"
 
 
 def load(manifest: pathlib.Path) -> dict:
-    return json.loads(manifest.read_text())
+    parsed: dict = json.loads(manifest.read_text())
+    return parsed
 
 
 def book_entries(data: dict, asin: str) -> list[dict]:

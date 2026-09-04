@@ -35,7 +35,7 @@ RESULT_OUT = os.environ["RESULT_OUT"]
 HEADERS = {"Content-Type": "application/json", "X-Api-Key": KEY}
 
 
-def call(path: str, payload=None, method: str = "GET"):
+def call(path: str, payload: dict | None = None, method: str = "GET") -> tuple[int, dict]:
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers=HEADERS)
     try:

@@ -27,10 +27,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
 from abs_conformance import (
-    COMPARED,
-    EXIT_FAIL,
     EXIT_INCONCLUSIVE,
-    EXIT_PASS,
     BookResult,
     book_directories,
     main,
@@ -47,7 +44,7 @@ TRUTH = {
 
 
 def result(observed_overrides: dict | None = None, ignored: tuple = ()) -> BookResult:
-    observed = dict(TRUTH)
+    observed: dict[str, str | None] = dict(TRUTH)
     observed.update(observed_overrides or {})
     return BookResult(directory="d", expected=dict(TRUTH), observed=observed, ignored=ignored)
 
@@ -56,15 +53,15 @@ def result(observed_overrides: dict | None = None, ignored: tuple = ()) -> BookR
 # The comparison
 # --------------------------------------------------------------------------
 
-def test_a_clean_round_trip_survives():
+def test_a_clean_round_trip_survives() -> None:
     assert result().survived
 
 
-def test_a_dropped_asin_is_a_mismatch():
+def test_a_dropped_asin_is_a_mismatch() -> None:
     assert result({"asin": None}).mismatches == ["asin"]
 
 
-def test_a_book_with_no_series_is_not_faulted_for_ABS_finding_none():
+def test_a_book_with_no_series_is_not_faulted_for_ABS_finding_none() -> None:
     r = BookResult(
         directory="d",
         expected=dict(TRUTH, series=None, sequence=None),
@@ -73,7 +70,7 @@ def test_a_book_with_no_series_is_not_faulted_for_ABS_finding_none():
     assert r.survived
 
 
-def test_empty_string_and_none_are_treated_as_the_same_absence():
+def test_empty_string_and_none_are_treated_as_the_same_absence() -> None:
     r = BookResult(directory="d",
                    expected=dict(TRUTH, series=""),
                    observed=dict(TRUTH, series=None))
@@ -84,12 +81,12 @@ def test_empty_string_and_none_are_treated_as_the_same_absence():
 # --ignore must narrow the check honestly, not hide failures
 # --------------------------------------------------------------------------
 
-def test_ignore_suppresses_only_the_named_field():
+def test_ignore_suppresses_only_the_named_field() -> None:
     r = result({"series": None, "asin": None}, ignored=("series",))
     assert r.mismatches == ["asin"], "ignoring series must not also excuse a dropped ASIN"
 
 
-def test_ignore_cannot_excuse_the_asin(tmp_path):
+def test_ignore_cannot_excuse_the_asin(tmp_path: pathlib.Path) -> None:
     """The ASIN is the whole point of the layout. Nothing should be able to wave it through."""
     r = result({"asin": None}, ignored=("asin",))
     # It is suppressible in the data model, so the guard has to be that no shipped case does it.
@@ -111,7 +108,10 @@ def test_ignore_cannot_excuse_the_asin(tmp_path):
         assert "title" not in fields, f"a shipped case ignores the title: {raw}"
 
 
-def test_unknown_ignore_field_is_refused(tmp_path, capsys):
+def test_unknown_ignore_field_is_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fx = write_fixture(tmp_path)
     rc = main(["--manifest", str(fx["manifest"]), "--abs-repo", str(fx["abs_repo"]),
                "--ignore", "narrator"])
@@ -122,14 +122,14 @@ def test_unknown_ignore_field_is_refused(tmp_path, capsys):
 # Reporting must not assert a mechanism that did not occur
 # --------------------------------------------------------------------------
 
-def test_missing_field_without_title_damage_is_not_called_pollution():
+def test_missing_field_without_title_damage_is_not_called_pollution() -> None:
     r = result({"asin": None})
     out = render([r], [], "t", [])
     assert "carries no asin" in out
     assert "glued" not in out and "still attached" not in out
 
 
-def test_title_damage_is_reported_as_such():
+def test_title_damage_is_reported_as_such() -> None:
     r = result({"title": "1a - The Valley of Fear [b002uufxku]", "asin": None, "sequence": None})
     out = render([r], [], "t", [])
     assert "the title did not survive" in out
@@ -139,14 +139,14 @@ def test_title_damage_is_reported_as_such():
 # Sidecar reporting
 # --------------------------------------------------------------------------
 
-def test_accepted_but_discarded_series_is_called_out():
+def test_accepted_but_discarded_series_is_called_out() -> None:
     out = render([result()], [], "t", [
         {"label": "structured", "parsed": {"title": "x"}, "series": [],
          "offeredSeries": 1, "keptSeries": 0}])
     assert "ACCEPTED but all 1 series entries were discarded" in out
 
 
-def test_a_kept_series_is_shown_with_its_sequence():
+def test_a_kept_series_is_shown_with_its_sequence() -> None:
     out = render([result()], [], "t", [
         {"label": "string", "parsed": {"title": "x"},
          "series": [{"name": "Sherlock Holmes", "sequence": "1a"}],
@@ -154,7 +154,7 @@ def test_a_kept_series_is_shown_with_its_sequence():
     assert "'Sherlock Holmes' #'1a'" in out
 
 
-def test_no_series_offered_is_not_confused_with_discarded():
+def test_no_series_offered_is_not_confused_with_discarded() -> None:
     out = render([result()], [], "t", [
         {"label": "none", "parsed": {"title": "x"}, "series": [],
          "offeredSeries": 0, "keptSeries": 0}])
@@ -162,7 +162,7 @@ def test_no_series_offered_is_not_confused_with_discarded():
     assert "discarded" not in out
 
 
-def test_a_rejected_sidecar_is_reported():
+def test_a_rejected_sidecar_is_reported() -> None:
     out = render([result()], [], "t", [{"label": "junk", "parsed": None}])
     assert "REJECTED" in out
 
@@ -186,7 +186,7 @@ def write_fixture(tmp_path: pathlib.Path, entries: list | None = None) -> dict:
     return {"manifest": manifest, "abs_repo": abs_repo}
 
 
-def test_one_directory_per_book_not_one_per_file(tmp_path):
+def test_one_directory_per_book_not_one_per_file(tmp_path: pathlib.Path) -> None:
     """A multi-file book is one directory for ABS, not three."""
     entries = [{
         "path": f"A/S/1 - T [B000000000]/part{n}.m4b", "kind": "book",
@@ -196,26 +196,26 @@ def test_one_directory_per_book_not_one_per_file(tmp_path):
     assert len(book_directories(fx["manifest"])) == 1
 
 
-def test_loose_files_at_the_root_are_skipped(tmp_path):
+def test_loose_files_at_the_root_are_skipped(tmp_path: pathlib.Path) -> None:
     fx = write_fixture(tmp_path, [{
         "path": "loose.m4b", "kind": "book", "belongs_to_asin": "B000000000",
         "true_title": "T", "true_authors": ["A"]}])
     assert book_directories(fx["manifest"]) == []
 
 
-def test_a_manifest_with_no_books_is_inconclusive_not_a_pass(tmp_path):
+def test_a_manifest_with_no_books_is_inconclusive_not_a_pass(tmp_path: pathlib.Path) -> None:
     fx = write_fixture(tmp_path, [])
     assert main(["--manifest", str(fx["manifest"]),
                  "--abs-repo", str(fx["abs_repo"])]) == EXIT_INCONCLUSIVE
 
 
-def test_a_directory_that_is_not_audiobookshelf_is_refused(tmp_path):
+def test_a_directory_that_is_not_audiobookshelf_is_refused(tmp_path: pathlib.Path) -> None:
     fx = write_fixture(tmp_path)
     assert main(["--manifest", str(fx["manifest"]),
                  "--abs-repo", str(tmp_path)]) == EXIT_INCONCLUSIVE
 
 
-def test_a_missing_manifest_is_refused(tmp_path):
+def test_a_missing_manifest_is_refused(tmp_path: pathlib.Path) -> None:
     fx = write_fixture(tmp_path)
     fx["manifest"].unlink()
     assert main(["--manifest", str(fx["manifest"]),

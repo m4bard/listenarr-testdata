@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import NoReturn
 
 API = os.environ["API"]
 KEY = os.environ["KEY"]
@@ -29,7 +30,7 @@ DATA_HOST = os.environ["DATA_HOST"]
 HEADERS = {"Content-Type": "application/json", "X-Api-Key": KEY}
 
 
-def call(path: str, payload=None, method: str = "GET"):
+def call(path: str, payload: dict | None = None, method: str = "GET") -> tuple[int, dict]:
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers=HEADERS)
     try:
@@ -59,7 +60,7 @@ def base_path_of(book_id: int) -> str | None:
     return body.get("basePath") or (body.get("audiobook") or {}).get("basePath")
 
 
-def finish(row: dict) -> None:
+def finish(row: dict) -> NoReturn:
     with open(ROW_OUT, "w") as handle:
         json.dump(row, handle, indent=2)
     sys.exit(0)

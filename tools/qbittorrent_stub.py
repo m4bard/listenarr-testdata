@@ -167,10 +167,12 @@ class Handler(BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
+    def log_message(self, fmt: str, *args: Any) -> None:
         LOG.debug("%s - %s", self.address_string(), fmt % args)
 
-    def _send(self, body: str, content_type: str = "application/json", cookie: bool = False) -> None:
+    def _send(
+        self, body: str, content_type: str = "application/json", cookie: bool = False
+    ) -> None:
         payload = body.encode()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
@@ -188,7 +190,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
@@ -227,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
             LOG.info("accepted %s; now holding %d torrent(s)", info_hash or "<no hash found>", held)
         self._send("Ok.", "text/plain")
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/v2/app/version":
             self._send("v5.0.2", "text/plain")
@@ -255,7 +257,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--conflict-on-duplicate",
         action="store_true",
@@ -272,14 +276,18 @@ def main() -> int:
         default=0,
         help="1-based position of the torrent to serve malformed; 0 serves all of them well formed",
     )
-    parser.add_argument("--malformed-field", default="downloaded", help="which field to serve malformed")
+    parser.add_argument(
+        "--malformed-field", default="downloaded", help="which field to serve malformed"
+    )
     parser.add_argument("--malformed-kind", choices=("float", "string"), default="float")
     parser.add_argument(
         "--state",
         default="stalledUP",
         help="qBittorrent state string for every torrent (default seeds a completed torrent)",
     )
-    parser.add_argument("--progress", type=float, default=1.0, help="progress fraction for every torrent")
+    parser.add_argument(
+        "--progress", type=float, default=1.0, help="progress fraction for every torrent"
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 

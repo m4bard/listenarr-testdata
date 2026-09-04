@@ -23,6 +23,7 @@ import json
 import pathlib
 import sqlite3
 import sys
+from typing import Any
 
 import pytest
 
@@ -58,9 +59,9 @@ NO_FFPROBE_LOG = (
 )
 
 
-def evidence(**kwargs) -> ProbeEvidence:
-    base = dict(ffprobe_missing=False, refusals=[], probe_runs=[],
-                enrichment_exceptions=0)
+def evidence(**kwargs: Any) -> ProbeEvidence:
+    base: dict[str, Any] = dict(ffprobe_missing=False, refusals=[], probe_runs=[],
+                                enrichment_exceptions=0)
     base.update(kwargs)
     return ProbeEvidence(**base)
 
@@ -81,33 +82,33 @@ def report(claimed_files: int = 0, on_disk_files: int = 1,
 # The verdict itself
 # --------------------------------------------------------------------------
 
-def test_unclaimed_file_fails():
+def test_unclaimed_file_fails() -> None:
     assert report(claimed_files=0).verdict == "unclaimed"
     assert report(claimed_files=0).exit_code == EXIT_FAIL
 
 
-def test_claimed_file_passes():
+def test_claimed_file_passes() -> None:
     r = report(claimed_files=1, claimed_bytes=2416,
                ev=evidence(probe_runs=["book.m4b"]))
     assert r.verdict == "claimed"
     assert r.exit_code == EXIT_PASS
 
 
-def test_partial_claim_is_not_a_pass():
+def test_partial_claim_is_not_a_pass() -> None:
     """Two of three files claimed is a failure, not a success with a caveat."""
     r = report(claimed_files=2, on_disk_files=3, claimed_bytes=1600)
     assert r.verdict == "partial"
     assert r.exit_code == EXIT_FAIL
 
 
-def test_nothing_generated_is_inconclusive_not_a_finding():
+def test_nothing_generated_is_inconclusive_not_a_finding() -> None:
     """No files on disk means the run says nothing about the server."""
     r = report(claimed_files=0, on_disk_files=0)
     assert r.verdict == "inconclusive"
     assert r.exit_code == EXIT_INCONCLUSIVE
 
 
-def test_absent_ffprobe_is_inconclusive_not_a_finding():
+def test_absent_ffprobe_is_inconclusive_not_a_finding() -> None:
     """Without ffprobe the metadata pass returns before probing, so it was never tested."""
     r = report(claimed_files=0, ev=evidence(ffprobe_missing=True))
     assert r.verdict == "inconclusive"
@@ -118,7 +119,7 @@ def test_absent_ffprobe_is_inconclusive_not_a_finding():
 # Reading the server's own account of what happened
 # --------------------------------------------------------------------------
 
-def test_refusal_on_a_bare_integer_is_recognised_as_a_descriptor(tmp_path):
+def test_refusal_on_a_bare_integer_is_recognised_as_a_descriptor(tmp_path: pathlib.Path) -> None:
     log = tmp_path / "server.log"
     log.write_text(REFUSAL_LOG)
     ev = read_log(log)
@@ -127,7 +128,7 @@ def test_refusal_on_a_bare_integer_is_recognised_as_a_descriptor(tmp_path):
     assert not ev.ffprobe_missing
 
 
-def test_refusal_on_a_real_filename_is_not_a_descriptor(tmp_path):
+def test_refusal_on_a_real_filename_is_not_a_descriptor(tmp_path: pathlib.Path) -> None:
     """A refusal naming an actual file is a different fault and must not be relabelled."""
     log = tmp_path / "server.log"
     log.write_text(REFUSAL_LOG.replace(": 399", ": cover.jpg"))
@@ -136,7 +137,7 @@ def test_refusal_on_a_real_filename_is_not_a_descriptor(tmp_path):
     assert not ev.refused_on_descriptor
 
 
-def test_successful_probe_is_read_as_a_run(tmp_path):
+def test_successful_probe_is_read_as_a_run(tmp_path: pathlib.Path) -> None:
     log = tmp_path / "server.log"
     log.write_text(SUCCESS_LOG)
     ev = read_log(log)
@@ -144,13 +145,13 @@ def test_successful_probe_is_read_as_a_run(tmp_path):
     assert not ev.refusals
 
 
-def test_missing_ffprobe_is_detected(tmp_path):
+def test_missing_ffprobe_is_detected(tmp_path: pathlib.Path) -> None:
     log = tmp_path / "server.log"
     log.write_text(NO_FFPROBE_LOG)
     assert read_log(log).ffprobe_missing
 
 
-def test_absent_log_is_not_treated_as_evidence(tmp_path):
+def test_absent_log_is_not_treated_as_evidence(tmp_path: pathlib.Path) -> None:
     ev = read_log(tmp_path / "nope.log")
     assert not ev.refusals and not ev.ffprobe_missing and not ev.probe_runs
 
@@ -159,7 +160,7 @@ def test_absent_log_is_not_treated_as_evidence(tmp_path):
 # Size, reported beside the claim rather than folded into it
 # --------------------------------------------------------------------------
 
-def test_size_of_a_descriptor_symlink_is_named_as_such():
+def test_size_of_a_descriptor_symlink_is_named_as_such() -> None:
     r = report(claimed_files=1, claimed_bytes=64, mode="control")
     assert "descriptor symlink" in r.size_note
     # It is still a claim: the row exists. The size is a separate defect.
@@ -167,24 +168,24 @@ def test_size_of_a_descriptor_symlink_is_named_as_such():
     assert r.exit_code == EXIT_PASS
 
 
-def test_matching_size_says_so():
+def test_matching_size_says_so() -> None:
     r = report(claimed_files=1, claimed_bytes=2416, mode="control")
     assert r.size_note == "matches disk"
 
 
-def test_multi_file_descriptor_sizes_are_still_recognised():
+def test_multi_file_descriptor_sizes_are_still_recognised() -> None:
     """40 rows of 64 bytes is the same defect as one row of 64, not an unrelated total."""
     r = report(claimed_files=40, on_disk_files=40, claimed_bytes=2560,
                on_disk_bytes=223520, mode="control")
     assert "descriptor symlink" in r.size_note
 
 
-def test_wrong_size_that_is_not_a_descriptor_is_reported_plainly():
+def test_wrong_size_that_is_not_a_descriptor_is_reported_plainly() -> None:
     r = report(claimed_files=1, claimed_bytes=1234, mode="control")
-    assert "1,234 recorded against 2,416 on disk" == r.size_note
+    assert r.size_note == "1,234 recorded against 2,416 on disk"
 
 
-def test_unclaimed_file_has_no_size_to_judge():
+def test_unclaimed_file_has_no_size_to_judge() -> None:
     assert report(claimed_files=0).size_note == "n/a"
 
 
@@ -232,7 +233,10 @@ def run_main(fx: dict, mode: str, json_out: pathlib.Path | None = None) -> int:
     return main(argv)
 
 
-def test_main_fails_when_the_fallback_did_not_claim(tmp_path, capsys):
+def test_main_fails_when_the_fallback_did_not_claim(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fx = write_fixture(tmp_path, claimed=False, size=None, log_text=REFUSAL_LOG)
     assert run_main(fx, "fallback") == EXIT_FAIL
     out = capsys.readouterr().out
@@ -242,7 +246,10 @@ def test_main_fails_when_the_fallback_did_not_claim(tmp_path, capsys):
     assert "diagnostic NONE" in out
 
 
-def test_main_passes_when_the_fallback_claimed(tmp_path, capsys):
+def test_main_passes_when_the_fallback_claimed(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fx = write_fixture(tmp_path, claimed=True, size=2416, log_text=SUCCESS_LOG)
     assert run_main(fx, "fallback") == EXIT_PASS
     out = capsys.readouterr().out
@@ -250,13 +257,16 @@ def test_main_passes_when_the_fallback_claimed(tmp_path, capsys):
     assert "matches disk" in out
 
 
-def test_main_reports_a_claimed_row_carrying_a_descriptor_size(tmp_path, capsys):
+def test_main_reports_a_claimed_row_carrying_a_descriptor_size(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fx = write_fixture(tmp_path, claimed=True, size=64, log_text=SUCCESS_LOG)
     assert run_main(fx, "control") == EXIT_PASS
     assert "descriptor symlink" in capsys.readouterr().out
 
 
-def test_main_writes_json_carrying_the_verdict(tmp_path):
+def test_main_writes_json_carrying_the_verdict(tmp_path: pathlib.Path) -> None:
     fx = write_fixture(tmp_path, claimed=False, size=None, log_text=REFUSAL_LOG)
     out = tmp_path / "result.json"
     run_main(fx, "fallback", json_out=out)
@@ -266,7 +276,7 @@ def test_main_writes_json_carrying_the_verdict(tmp_path):
     assert payload["on_disk_bytes"] == 2416
 
 
-def test_main_is_inconclusive_without_a_database(tmp_path):
+def test_main_is_inconclusive_without_a_database(tmp_path: pathlib.Path) -> None:
     fx = write_fixture(tmp_path, claimed=False, size=None, log_text=REFUSAL_LOG)
     fx["db"].unlink()
     assert run_main(fx, "fallback") == EXIT_INCONCLUSIVE

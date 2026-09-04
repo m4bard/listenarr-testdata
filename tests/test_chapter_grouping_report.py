@@ -113,19 +113,19 @@ def exploded_subject_items() -> list[dict]:
 
 # --- the verdict itself -----------------------------------------------------------------
 
-def test_one_item_covering_every_file_is_grouped(library):
+def test_one_item_covering_every_file_is_grouped(library: pathlib.Path) -> None:
     result = run(library, grouped_items(), "ctl")
     assert result.returncode == EXIT_PASS, result.stdout
     assert "PASS" in result.stdout
 
 
-def test_one_item_per_file_is_a_failure(library):
+def test_one_item_per_file_is_a_failure(library: pathlib.Path) -> None:
     result = run(library, exploded_subject_items(), "ctl")
     assert result.returncode == EXIT_FAIL, result.stdout
     assert "exploded" in result.stdout
 
 
-def test_a_broken_control_cannot_report_a_failure(library):
+def test_a_broken_control_cannot_report_a_failure(library: pathlib.Path) -> None:
     """The subject exploded, but so did the control, so the run proves nothing about names."""
     items = [
         item("ctl", "A Book - Part 01.mp3"),
@@ -138,26 +138,28 @@ def test_a_broken_control_cannot_report_a_failure(library):
     assert "control" in result.stdout
 
 
-def test_a_control_that_matches_nothing_is_inconclusive(library):
+def test_a_control_that_matches_nothing_is_inconclusive(library: pathlib.Path) -> None:
     result = run(library, grouped_items(), "no-such-case")
     assert result.returncode == EXIT_INCONCLUSIVE, result.stdout
 
 
 # --- coverage is checked before grouping ------------------------------------------------
 
-def test_a_scan_that_indexed_nothing_is_inconclusive_not_a_grouping_failure(library):
+def test_a_scan_that_indexed_nothing_is_inconclusive_not_a_grouping_failure(
+    library: pathlib.Path,
+) -> None:
     result = run(library, [], "ctl")
     assert result.returncode == EXIT_INCONCLUSIVE, result.stdout
     assert "822" in result.stdout
 
 
-def test_files_lost_before_grouping_are_inconclusive(library):
+def test_files_lost_before_grouping_are_inconclusive(library: pathlib.Path) -> None:
     result = run(library, [item("sub", "A Book (1).mp3", "A Book (2).mp3")], "ctl")
     assert result.returncode == EXIT_INCONCLUSIVE, result.stdout
     assert "2 of 4" in result.stdout
 
 
-def test_an_empty_library_cannot_report_a_pass(tmp_path):
+def test_an_empty_library_cannot_report_a_pass(tmp_path: pathlib.Path) -> None:
     empty = tmp_path / "library"
     empty.mkdir()
     result = run(empty, grouped_items(), "ctl")
@@ -166,7 +168,7 @@ def test_an_empty_library_cannot_report_a_pass(tmp_path):
 
 # --- classification units ---------------------------------------------------------------
 
-def test_judge_names_each_outcome():
+def test_judge_names_each_outcome() -> None:
     case = {"case": "sub", "structure": "paren-index", "tag_state": "no-tags",
             "title_tags": "none", "files_on_disk": 4, "example": "A Book (1).mp3"}
     assert judge(case, [item("sub", *[f"A Book ({n}).mp3" for n in range(1, 5)])])[
@@ -178,20 +180,20 @@ def test_judge_names_each_outcome():
     assert judge(case, [])["observed"] == MISSING
 
 
-def test_one_item_that_covers_only_some_files_is_partial_not_grouped():
+def test_one_item_that_covers_only_some_files_is_partial_not_grouped() -> None:
     """An item count of one is not enough; it has to account for the whole folder."""
     case = {"case": "sub", "structure": "paren-index", "tag_state": "no-tags",
             "title_tags": "none", "files_on_disk": 4, "example": "A Book (1).mp3"}
     assert judge(case, [item("sub", "A Book (1).mp3")])["observed"] == PARTIAL
 
 
-def test_case_of_reads_the_top_level_directory_under_the_root():
+def test_case_of_reads_the_top_level_directory_under_the_root() -> None:
     assert case_of("/audiobooks/sub/An Author/A Book/x.mp3", "/audiobooks") == "sub"
     assert case_of("/audiobooks/sub/An Author/A Book/x.mp3", "/audiobooks/") == "sub"
     assert case_of("/elsewhere/sub/x.mp3", "/audiobooks") == ""
 
 
-def test_title_tags_separates_absent_shared_and_per_file_titles():
+def test_title_tags_separates_absent_shared_and_per_file_titles() -> None:
     assert title_tags([{"tags_written": {}}, {"tags_written": {}}]) == "none"
     assert title_tags([{"tags_written": {"title": "A Book"}},
                        {"tags_written": {"title": "A Book"}}]) == "book title"

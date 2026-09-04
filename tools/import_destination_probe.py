@@ -59,7 +59,7 @@ def organized_under(host_root: str) -> list[str]:
 
     Flat files at the root are the untouched drop folder, not an import, so they never count.
     """
-    found = []
+    found: list[str] = []
     for dirpath, _dirnames, filenames in os.walk(host_root):
         if os.path.abspath(dirpath) == os.path.abspath(host_root):
             continue

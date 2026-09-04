@@ -103,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
     args: argparse.Namespace
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, fmt: str, *a: Any) -> None:  # noqa: A003
+    def log_message(self, fmt: str, *a: Any) -> None:
         LOG.debug("%s - %s", self.address_string(), fmt % a)
 
     def _send(self, body: str, content_type: str = "application/xml") -> None:
@@ -114,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         mode = (params.get("t") or [""])[0]

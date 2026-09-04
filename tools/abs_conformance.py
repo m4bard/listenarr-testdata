@@ -114,7 +114,8 @@ def run_bridge(abs_repo: pathlib.Path, dirs: list[str],
         raise SystemExit(
             f"the Audiobookshelf bridge produced no output (exit {proc.returncode}): "
             f"{proc.stderr.strip()[:400]}")
-    return json.loads(proc.stdout)
+    parsed: dict[str, Any] = json.loads(proc.stdout)
+    return parsed
 
 
 def render(results: list[BookResult], stubbed: list[str], label: str,

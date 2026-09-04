@@ -12,7 +12,10 @@ requires-python = ">=3.11"
 dependencies = ["mutagen>=1.47"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
+# Floors are the versions this repository is actually checked against, not the oldest that
+# might work. They were once loose enough that a local venv ran mypy 2.x while CI resolved
+# something far older, and the two disagreed about whether the code type-checked at all.
+dev = ["pytest>=9.1", "ruff>=0.16", "mypy>=2.3"]
 
 # tools/ and corpus/ are scripts run in place, not an importable package. Installing the
 # project is only a way to get the dependencies; there is nothing to put on sys.path.

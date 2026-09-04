@@ -75,7 +75,7 @@ def assert_manifest_matches_disk(library: pathlib.Path) -> None:
 # Each mutation does what it says
 # --------------------------------------------------------------------------
 
-def test_file_mutation_renames_the_audio_and_keeps_the_folder(tmp_path):
+def test_file_mutation_renames_the_audio_and_keeps_the_folder(tmp_path: pathlib.Path) -> None:
     library = build_library(tmp_path)
     assert run(library, "file") == 0
     path = manifest_paths(library)[0]
@@ -84,7 +84,9 @@ def test_file_mutation_renames_the_audio_and_keeps_the_folder(tmp_path):
     assert_manifest_matches_disk(library)
 
 
-def test_folder_mutation_renames_the_directory_and_keeps_the_filename(tmp_path):
+def test_folder_mutation_renames_the_directory_and_keeps_the_filename(
+    tmp_path: pathlib.Path,
+) -> None:
     library = build_library(tmp_path)
     assert run(library, "folder") == 0
     path = manifest_paths(library)[0]
@@ -93,7 +95,7 @@ def test_folder_mutation_renames_the_directory_and_keeps_the_filename(tmp_path):
     assert_manifest_matches_disk(library)
 
 
-def test_both_applies_each_of_them(tmp_path):
+def test_both_applies_each_of_them(tmp_path: pathlib.Path) -> None:
     library = build_library(tmp_path)
     assert run(library, "both") == 0
     path = manifest_paths(library)[0]
@@ -101,7 +103,7 @@ def test_both_applies_each_of_them(tmp_path):
     assert_manifest_matches_disk(library)
 
 
-def test_none_changes_nothing(tmp_path):
+def test_none_changes_nothing(tmp_path: pathlib.Path) -> None:
     library = build_library(tmp_path)
     before = manifest_paths(library)
     assert run(library, "none") == 0
@@ -113,7 +115,7 @@ def test_none_changes_nothing(tmp_path):
 # The answer key stays honest
 # --------------------------------------------------------------------------
 
-def test_multi_file_book_keeps_every_path_resolvable(tmp_path):
+def test_multi_file_book_keeps_every_path_resolvable(tmp_path: pathlib.Path) -> None:
     """Renaming several files in one folder must not collide or orphan an entry."""
     library = build_library(tmp_path, files=3)
     assert run(library, "both") == 0
@@ -123,7 +125,7 @@ def test_multi_file_book_keeps_every_path_resolvable(tmp_path):
     assert_manifest_matches_disk(library)
 
 
-def test_other_books_are_left_alone(tmp_path):
+def test_other_books_are_left_alone(tmp_path: pathlib.Path) -> None:
     """The mutation is scoped to one book; a sibling book must survive untouched."""
     library = build_library(tmp_path, with_other=True)
     assert run(library, "both") == 0
@@ -132,7 +134,7 @@ def test_other_books_are_left_alone(tmp_path):
     assert_manifest_matches_disk(library)
 
 
-def test_folder_mutation_moves_the_directory_not_a_copy(tmp_path):
+def test_folder_mutation_moves_the_directory_not_a_copy(tmp_path: pathlib.Path) -> None:
     library = build_library(tmp_path)
     run(library, "folder")
     author = library / "Arthur Conan Doyle"
@@ -144,18 +146,18 @@ def test_folder_mutation_moves_the_directory_not_a_copy(tmp_path):
 # Refusals, so a broken run is not mistaken for a mutated one
 # --------------------------------------------------------------------------
 
-def test_unknown_asin_is_refused(tmp_path):
+def test_unknown_asin_is_refused(tmp_path: pathlib.Path) -> None:
     library = build_library(tmp_path)
     assert run(library, "both", asin="B000NOTHER") == 2
 
 
-def test_missing_manifest_is_refused(tmp_path):
+def test_missing_manifest_is_refused(tmp_path: pathlib.Path) -> None:
     library = build_library(tmp_path)
     (library / "manifest.json").unlink()
     assert run(library, "both") == 2
 
 
-def test_folder_mutation_on_a_root_level_file_is_refused(tmp_path):
+def test_folder_mutation_on_a_root_level_file_is_refused(tmp_path: pathlib.Path) -> None:
     """A loose file has no book directory to rename, and silently doing nothing would read as
     a mutation that was applied."""
     library = tmp_path / "library"

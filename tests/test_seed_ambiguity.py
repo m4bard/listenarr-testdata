@@ -9,6 +9,13 @@ The cost is that a fragment can fail to distinguish two different works by the s
 `Kipling` plus `Jungle Book` matches both `The Jungle Book` and `The Second Jungle Book`, so an
 ASIN drifting from one to the other would still be accepted.
 
+A fragment is not the only thing standing between a seed and the wrong book. A seed named in
+`build_corpus.SPELLING_CRITICAL` must additionally match its credited author string exactly, and
+that pin discriminates in cases no fragment can: `Peter Pan` is inside `Peter Pan in Kensington
+Gardens` however you word it, but one record credits `J M Barrie` and the other `James M. Barrie`.
+`accepted` below applies both halves, because judging on the fragment alone would report those
+seeds as unprotected when they are the best protected in the corpus.
+
 This is a ratchet, not a clean bill of health. The seeds that are ambiguous today are listed and
 frozen; a new one cannot be added, and a listed one that gets fixed has to be removed from the
 list. Editions of the *same* work sharing a fragment are fine and are not counted, since the drift
@@ -38,14 +45,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # their native title, which `build_corpus.check_fragment` now requires of every seed.
 #
 # The edition variants left the list by a different route: they were never really ambiguous,
-# and `same_work` below now says so. What survives is one kind of case, and no fragment can
-# fix it. A title that is a strict substring of another's leaves nothing to match the shorter
-# without also matching the longer: Pellucidar inside Tanar of Pellucidar, Faust inside
-# Faust I. Separating those needs an exact comparison, which was measured and rejected.
+# and `same_work` below now says so. `B00APWL9E4` (Faust I, inside Faust I + II) left on
+# 2026-09-04 by a third route: it is spelling-critical, so acceptance now demands the exact
+# string `Johann Wolfgang Goethe`, and every record it used to be confusable with credits
+# `Johann Wolfgang von Goethe`. Nothing about its fragment changed.
+#
+# What survives is one kind of case, and no fragment can fix it. A title that is a strict
+# substring of another's leaves nothing to match the shorter without also matching the
+# longer: Pellucidar inside Tanar of Pellucidar, Faust inside Faust I. What CAN fix it is
+# an exact author pin, where the two records credit different strings; the four below are
+# the ones where they do not.
 KNOWN_AMBIGUOUS_SEEDS: frozenset[str] = frozenset({
     "B002V1OVFQ",  # Pellucidar, inside Tanar of Pellucidar
     "B00769TAK4",  # Faust, inside Faust I and Faust I + II
-    "B00APWL9E4",  # Faust I, inside Faust I + II
     "B00EOO99WS",  # Faust
     "B00JQEQFL4",  # Faust
 })
@@ -66,6 +78,19 @@ def work_key(title: str) -> str:
     return LEADING_ARTICLE.sub("", normalize(EDITION_DECORATION.sub(" ", title or "")))
 
 
+def author_key(name: str) -> str:
+    """A credited name with punctuation and spacing removed: 'J. M. Barrie' -> 'jmbarrie'.
+
+    The corpus deliberately credits one author under several punctuations of the same
+    initials, because that is the drift a {Author} rename has to fold together. Comparing
+    credited strings exactly therefore makes two editions of ONE work look like two works,
+    which is the opposite of what same_work is for. Only punctuation and spacing come off:
+    'James M. Barrie' stays distinct from 'J. M. Barrie', so an abbreviation is still a
+    difference and Pellucidar-style containment is untouched.
+    """
+    return "".join(ch for ch in normalize(name) if ch.isalnum())
+
+
 def same_work(one: dict, other: dict) -> bool:
     """Are these two books the same work, differing only in which edition of it they are?
 
@@ -75,6 +100,10 @@ def same_work(one: dict, other: dict) -> bool:
     `War and Peace` and `War and Peace (Russian Edition)` are one work, and `Metamorphosis`
     and `The Metamorphosis` are one work.
 
+    The author comparison ignores punctuation and spacing, so a work credited to
+    `J. M. Barrie` on one ASIN and `J.M. Barrie` on another is still one work. Without that
+    the corpus's own author-drift pairs would each read as two different books.
+
     The rule deliberately does NOT say "same author, and one title contains the other". That
     reading would swallow `Pellucidar` inside `Tanar of Pellucidar`, which is the same author
     and a real containment and two entirely different novels. What separates them is that the
@@ -83,8 +112,8 @@ def same_work(one: dict, other: dict) -> bool:
     Burroughs flagged where he belongs.
     """
     return (work_key(one["title"]) == work_key(other["title"])
-            and bool({normalize(a) for a in one["authors"]}
-                     & {normalize(a) for a in other["authors"]}))
+            and bool({author_key(a) for a in one["authors"]}
+                     & {author_key(a) for a in other["authors"]}))
 
 
 def corpus_books() -> list[dict]:
@@ -100,8 +129,21 @@ def fragment_matches(want_author: str, want_title: str, book: dict) -> bool:
             and want_title.lower() in (book["title"] or "").lower())
 
 
+def accepted(asin: str, want_author: str, want_title: str, book: dict) -> bool:
+    """Everything `build_corpus` requires before it takes a book, not just the fragment half.
+
+    A seed named in SPELLING_CRITICAL must also match its credited author string exactly, and
+    that check discriminates where a fragment cannot. `Peter Pan` sits inside `Peter Pan in
+    Kensington Gardens` and no wording of the fragment separates them, but the two records
+    credit `J M Barrie` and `James M. Barrie`, so the exact pin does. Judging ambiguity on the
+    fragment alone would report those seeds as unprotected when they are not.
+    """
+    return (fragment_matches(want_author, want_title, book)
+            and build_corpus.check_spelling(asin, book["authors"]) is None)
+
+
 def ambiguous_seeds() -> dict[str, list[str]]:
-    """Seeds whose fragment also matches a different WORK, and which those are."""
+    """Seeds that would also accept a different WORK, and which those are."""
     books = corpus_books()
     by_asin = {book["asin"]: book for book in books}
     found: dict[str, list[str]] = {}
@@ -111,7 +153,7 @@ def ambiguous_seeds() -> dict[str, list[str]]:
             continue
         others = sorted({
             book["title"] for book in books
-            if fragment_matches(want_author, want_title, book)
+            if accepted(asin, want_author, want_title, book)
             and normalize(book["title"]) != normalize(own["title"])
             and not same_work(book, own)
         })
@@ -127,8 +169,14 @@ class TestSeedFragmentsAreUnambiguous:
         new = sorted(set(ambiguous_seeds()) - KNOWN_AMBIGUOUS_SEEDS)
         detail = {asin: ambiguous_seeds()[asin][:3] for asin in new}
         assert not new, (
-            "these seeds cannot tell their own book from a differently-titled one:\n"
-            f"{json.dumps(detail, indent=2, ensure_ascii=False)}"
+            "these seeds would accept a differently-titled book by the same author, so a "
+            "drifted or mistyped ASIN could resolve to the wrong one and still pass:\n"
+            f"{json.dumps(detail, indent=2, ensure_ascii=False)}\n"
+            "Fix it, in this order. Give the seed a fragment that names its own work, which "
+            "works unless its title is a strict substring of the other's. Failing that, pin "
+            "it in build_corpus.SPELLING_CRITICAL: acceptance then demands the exact credited "
+            "author, which separates two records a fragment cannot. Only if neither applies "
+            "does it belong in KNOWN_AMBIGUOUS_SEEDS, with the reason written beside it."
         )
 
     def test_the_exemption_list_has_no_stale_entries(self) -> None:
@@ -209,3 +257,41 @@ class TestSameWorkDoesNotLaunderARealCollision:
         one = {"asin": "B1", "title": "Marie", "authors": ["H. Rider Haggard"]}
         other = {"asin": "B2", "title": "Marie", "authors": ["Someone Else"]}
         assert not same_work(one, other)
+
+
+@pytest.mark.contract
+class TestTheExactAuthorPinIsWhatSeparatesTheBarrieSeeds:
+    """Four Barrie records, two titles, and one title a strict substring of another's.
+
+    No fragment can separate `Peter Pan` from `Peter Pan in Kensington Gardens`. What does is
+    that acceptance for a spelling-critical seed demands the whole credited author string, and
+    the two records credit different ones. These tests exist so that removing a pin cannot
+    quietly turn the fragment check back into the only thing guarding these seeds.
+    """
+
+    BARRIE = ("B0C6FJ6L34", "B084J9S79P", "B078X1NX28", "B002V1M36U")
+
+    def test_none_of_them_is_ambiguous(self) -> None:
+        assert [asin for asin in self.BARRIE if asin in ambiguous_seeds()] == []
+
+    def test_all_four_are_pinned(self) -> None:
+        """If one loses its pin the test above stops meaning what it says."""
+        assert [a for a in self.BARRIE if a not in build_corpus.SPELLING_CRITICAL] == []
+
+    def test_the_fragment_alone_would_not_have_separated_them(self) -> None:
+        """The gap the pin closes, asserted rather than described."""
+        by_asin = {book["asin"]: book for book in corpus_books()}
+        kensington = by_asin["B0C6FJ6L34"]
+        # B002V1M36U's whole title is "Peter Pan", which is inside the Kensington title, and
+        # both are credited to a name containing "Barrie".
+        assert fragment_matches("Barrie", "Peter Pan", kensington)
+        # Acceptance still refuses it, because the credited strings differ.
+        assert not accepted("B002V1M36U", "Barrie", "Peter Pan", kensington)
+
+    def test_removing_a_pin_makes_the_seed_ambiguous_again(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        without = {a: v for a, v in build_corpus.SPELLING_CRITICAL.items()
+                   if a != "B002V1M36U"}
+        monkeypatch.setattr(build_corpus, "SPELLING_CRITICAL", without)
+        assert "B002V1M36U" in ambiguous_seeds()

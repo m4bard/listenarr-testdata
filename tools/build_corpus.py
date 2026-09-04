@@ -225,7 +225,8 @@ SEEDS: list[tuple[str, str, str, list[str], str]] = [
     # nothing whatsoever differs except a space and the position of two dots. The fourth,
     # B0C6FJ6L34 'James M. Barrie', is abbreviation drift, which no punctuation rule collapses
     # and which is kept precisely as the case that shows where such a fix stops.
-    ("B0C6FJ6L34", "Barrie", "Peter Pan", ["title-collision", "author-variant"], "3008"),
+    ("B0C6FJ6L34", "Barrie", "Kensington Gardens",
+     ["title-collision", "author-variant"], "3008"),
     ("B084J9S79P", "Barrie", "Peter and Wendy",
      ["title-collision", "author-variant", "author-punctuation", "series"], "5721"),
     ("B078X1NX28", "Barrie", "Peter and Wendy",

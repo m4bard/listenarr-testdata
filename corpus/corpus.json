@@ -624,11 +624,68 @@
       "tags": [
         "title-collision",
         "author-variant",
+        "author-punctuation",
         "series"
       ],
       "librivox_id": "5721",
       "librivox_title": "Peter and Wendy",
       "librivox_url": "https://librivox.org/peter-and-wendy-by-j-m-barrie/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B078X1NX28",
+      "title": "Peter and Wendy (AmazonClassics Edition)",
+      "subtitle": null,
+      "authors": [
+        "J. M. Barrie"
+      ],
+      "narrators": [
+        "Karen Cass"
+      ],
+      "series": "Peter Pan",
+      "series_asin": "B07W68C8J5",
+      "series_position": "3",
+      "release_date": "2018-01-30",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision",
+        "author-variant",
+        "author-punctuation"
+      ],
+      "librivox_id": "5721",
+      "librivox_title": "Peter and Wendy",
+      "librivox_url": "https://librivox.org/peter-and-wendy-by-j-m-barrie/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B002V1M36U",
+      "title": "Peter Pan",
+      "subtitle": null,
+      "authors": [
+        "J M Barrie"
+      ],
+      "narrators": [
+        "Full Cast",
+        "Toyah Wilcox"
+      ],
+      "series": "Peter Pan",
+      "series_asin": "B07W68C8J5",
+      "series_position": "2, Dramatized",
+      "release_date": "2006-08-16",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision",
+        "author-variant",
+        "author-punctuation",
+        "full-cast"
+      ],
+      "librivox_id": "816",
+      "librivox_title": "Peter Pan",
+      "librivox_url": "https://librivox.org/peter-pan-by-j-m-barrie",
       "librivox_language": "English",
       "librivox_same_language": true
     },

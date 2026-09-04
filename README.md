@@ -1,5 +1,7 @@
 # listenarr-testdata
 
+[![CI](https://github.com/m4bard/listenarr-testdata/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/m4bard/listenarr-testdata/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+
 A generator for synthetic audiobook libraries, built to reproduce and demonstrate scan, match and rename bugs in [Listenarr](https://github.com/Listenarrs/Listenarr) — without anybody having to share a real library.
 
 It is a generator, not a library. The repository holds a manifest of real books and the scripts that lay them out on disk. It synthesizes one-second silent audio files with ffmpeg, writes genuine embedded tags onto them, and arranges them in whichever folder convention the scenario calls for. A library regenerates in seconds; the repo stays a few hundred kilobytes. **No audio is committed, ever.**
@@ -738,6 +740,7 @@ tools/verify_scan.py        expected vs observed; the rename audit; --json/--jun
 tools/conformance_diff.py   A/B two --json reports: what a branch fixed and regressed
 tools/vet-against.sh        build a branch and run the harness against it
 tools/benchmark_scan.sh     time a scan at several library sizes
+tools/ci_status.sh          is the gate red on the branch work lands on? push runs only
 tools/validate_*.sh         the narrower runtime checks, one behaviour each
 tools/check_duplicate_*.sh  both ASINs of each twin pair, against a live instance
 tools/*_ffbinary.py         package and install pinned ffmpeg-family binaries

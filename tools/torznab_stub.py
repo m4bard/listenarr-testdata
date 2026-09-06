@@ -164,7 +164,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--port", type=int, default=9117)
+    parser.add_argument(
+        "--port",
+        type=int,
+        required=True,
+        help=(
+            "port to listen on. REQUIRED, deliberately with no default: this used to "
+            "default to 9117, which is Jackett's own port, so anyone running the stub "
+            "without thinking about it collided with a real Jackett. Pick a port you "
+            "have proven free."
+        ),
+    )
     parser.add_argument(
         "--box-set",
         metavar="TITLE",

@@ -22,3 +22,4 @@ session-state.md
 .coverage
 # run logs from the validate_* tools; they name local paths and prove nothing on their own
 *.log
+.local/

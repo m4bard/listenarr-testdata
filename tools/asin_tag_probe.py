@@ -79,11 +79,15 @@ def read_asin(path: pathlib.Path) -> tuple[str | None, str | None]:
                 return str(frame.text[0]).strip() or None, f"TXXX:{frame.desc}"
         return None, None
 
-    for key in tags:
-        if key.lower() == XIPH_FIELD:
-            values = tags[key]
-            if values:
-                return str(values[0]).strip() or None, key
+    # A Vorbis comment block, in a flac or an ogg. mutagen's comment container ITERATES as
+    # (key, value) pairs rather than as keys, so walking it and calling .lower() on each
+    # item raised AttributeError on every flac ever handed to this reader — and an
+    # exception here exits 1, which the shell above reads as `untagged`, which is the
+    # finding. Asking for the field by name avoids the walk entirely, and the container
+    # lower-cases keys on both sides of a lookup, so a writer's `ASIN` is found by `asin`.
+    values = tags.get(XIPH_FIELD)
+    if values:
+        return str(values[0]).strip() or None, XIPH_FIELD
     return None, None
 
 

@@ -124,3 +124,68 @@ def test_reading_back_a_hand_written_atom_agrees_with_the_reader(
     audio.tags[MP4_ATOM] = [MP4FreeForm(ASIN.encode("utf-8"))]
     audio.save()
     assert read_asin(untagged_m4b) == (ASIN, MP4_ATOM)
+
+
+# --------------------------------------------------------------------------
+# The other two containers
+# --------------------------------------------------------------------------
+# ApplyAsinTag writes into three tag systems, one per container, and they are three code
+# paths that fail independently. Everything above this line is an m4b, so until now the
+# reader was only ever tested on a third of what it claims to read — and the flac third
+# was broken: mutagen's Vorbis comment container iterates as (key, value) pairs, so the
+# reader raised AttributeError on every flac it was handed. An uncaught exception exits 1,
+# and 1 is the code for `untagged`, which is the finding. A crash was indistinguishable
+# from a reproduction.
+
+
+def _synthesize(target: pathlib.Path, codec: str) -> pathlib.Path:
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is required to synthesize the fixture audio")
+    subprocess.run(
+        ["ffmpeg", "-v", "quiet", "-y", "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono",
+         "-t", "1", "-c:a", codec, "-metadata", "title=A Book", str(target)],
+        check=True,
+    )
+    return target
+
+
+@pytest.fixture
+def untagged_mp3(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A real, tiny mp3 with ordinary tags and no ASIN in any spelling."""
+    return _synthesize(tmp_path / "book.mp3", "libmp3lame")
+
+
+@pytest.fixture
+def untagged_flac(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A real, tiny flac with ordinary tags and no ASIN in any spelling."""
+    return _synthesize(tmp_path / "book.flac", "flac")
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("fixture", ["untagged_m4b", "untagged_mp3", "untagged_flac"])
+def test_each_container_reads_both_ways(fixture: str, request: pytest.FixtureRequest) -> None:
+    # Both answers, in every container the writer knows. Asserting only the `untagged` half
+    # would have passed on the broken flac path, since the crash exited 1 as well.
+    audio = request.getfixturevalue(fixture)
+
+    absent = run("read", str(audio))
+    assert absent.returncode == 1, absent.stderr
+    assert "untagged" in absent.stdout
+    assert "Traceback" not in absent.stderr
+
+    stamp_asin(audio, ASIN)
+    present = run("read", str(audio), "--expect-asin", ASIN)
+    assert present.returncode == 0, present.stderr
+    assert ASIN in present.stdout
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("fixture", ["untagged_mp3", "untagged_flac"])
+def test_a_wrong_asin_is_not_a_pass_in_any_container(
+    fixture: str, request: pytest.FixtureRequest
+) -> None:
+    audio = request.getfixturevalue(fixture)
+    stamp_asin(audio, "B0069AC0KA")
+    result = run("read", str(audio), "--expect-asin", ASIN)
+    assert result.returncode == 1
+    assert "wrong-asin" in result.stdout

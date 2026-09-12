@@ -385,12 +385,16 @@ suggests is worse than one that covers little and admits it.
   exercises it against a real file. The controller tests mock the writer away entirely, and the
   writer's own test file holds a single case, for the scan-only lease, which asserts that it
   returns early **without** opening a stream. So the one branch under test is the one where it is
-  supposed to do nothing. The tool imports a generated file
-  that carries no ASIN and then reads the destination's tags on the host, looking in the three
-  places the writer puts one. Two gates run before the import and it refuses a verdict without
-  both, because the reader has to be shown capable of both answers in the same run: a copy of the
-  same file with the atom stamped on by hand must read `tagged`, and the file as it goes in must
-  read `untagged`. The verdict is then the destination file's: the source went in without an ASIN
+  supposed to do nothing. The tool imports generated files
+  that carry no ASIN and then reads each destination's tags on the host, looking in the three
+  places the writer puts one. It does that once per container: `ApplyAsinTag` writes an iTunes
+  freeform atom in MP4, a `TXXX` frame in ID3 and a comment field in Xiph, which are three code
+  paths that fail independently, so a run that only ever imports an m4b reports on a third of the
+  writer. The sources come from the tag-dialects scenario with the tag state forced to
+  `correct-no-asin`, one book per container, and `--format` narrows it to one. Two gates run per
+  container and that container gets no verdict without both, because the reader has to be shown
+  capable of both answers on that container in the same run: a copy of the same file with the tag
+  stamped on by hand must read `tagged`, and the file as it goes in must read `untagged`. The verdict is then the destination file's: the source went in without an ASIN
   and the library record carried one, so what the file says afterwards is a statement about the
   writer. The server's own log lines are read as corroboration and recorded as a note, and a log
   that says nothing no longer withholds a verdict the file already supports, because the writer's
@@ -398,8 +402,11 @@ suggests is worse than one that covers little and admits it.
   moved. A `Failed to write` line still brings its frames along, which is what names the cause.
   The preconditions the log check used to stand in for are checked directly instead, each of them
   ending the run on its own: the library record has to carry an ASIN, the destination folder has to
-  start empty, and the destination file has to be readable as audio. Exit `0` the ASIN was embedded,
-  `1` it was not, `2` the run could not be judged.
+  start empty, and the destination file has to be readable as audio. An import the API refuses is
+  read from the response rather than waited out, since a refused import and a writer that did
+  nothing produce the same empty destination folder. Exit `0` every container judged carried the
+  ASIN, `1` at least one did not, `2` none could be judged; a failure outranks an unjudged
+  container, and the per-container table says which was which.
 - **`validate_sidecar_rename.sh`** (Listenarr#577) imports a book's audio, drops `cover.jpg` and
   `metadata.json` beside it, changes the naming pattern so the book must relocate, renames, and then
   looks at the filesystem to see whether the companions followed the audio. It asserts the correct

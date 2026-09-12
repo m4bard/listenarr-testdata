@@ -24,10 +24,21 @@
 #             embedded an ASIN of its own would make "an ASIN is present afterwards" true without
 #             Listenarr having written anything, and the check would pass on a broken build.
 #
-# The server's own logs are then read as corroboration, the way a scan check reads its `Blocked`
-# line: the writer logs either "Wrote ASIN tag" or "Failed to write ASIN tag". If NEITHER appears
-# the enrichment step never ran at all — an unmatched book, a blank ASIN, an import that did not
-# publish — and that is reported as inconclusive rather than as a finding.
+# The verdict is the FILE's. Once both gates land, the source went in carrying no ASIN and the
+# library record carried one, so what the destination file says afterwards is a statement about the
+# writer and about nothing else.
+#
+# The server's own logs are read as corroboration only: the writer logs either "Wrote ASIN tag" or
+# "Failed to write ASIN tag". Neither line appearing used to end the run as unjudgeable, and that
+# was wrong. The wording belongs to the server and can move, and a step that logs nothing at all
+# looks identical to one whose message changed, so a log that says nothing is a note about the log
+# rather than a reason to withhold a verdict the file already supports. What the log can still do is
+# name a cause: a "Failed to write" line brings its frames with it.
+#
+# The preconditions the log check used to stand in for are checked directly instead, and each one
+# ends the run on its own: the book's record has to carry an ASIN (or nothing asked for a tag), the
+# destination folder has to start empty (or the file being read is a previous run's), and the
+# destination file has to exist and be readable as audio (or there is nothing to judge).
 #
 # A pinned ffprobe is provisioned up front (tools/ffprobe_provisioner.py) so the import's own
 # metadata step does not hard-fail on the first-boot download race.
@@ -35,7 +46,8 @@
 #   ./tools/validate_asin_tag_embed.sh --image ghcr.io/listenarrs/listenarr:canary
 #
 # Exit 0 the ASIN was embedded, 1 it was not, 2 the run could not be judged (a gate failed, the
-# import never completed, or the enrichment step never ran).
+# book went in without an ASIN, the destination folder was already dirty, the import never
+# completed, or the destination file cannot be read as audio).
 #
 set -uo pipefail
 unset TMOUT
@@ -95,14 +107,15 @@ log()  { printf '%s [asintag] %s\n' "$(date +%H:%M:%S)" "$*"; }
 die()  { printf '%s [asintag] ERROR: %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 2; }
 fail() { printf '%s [asintag] FAIL: %s\n' "$(date +%H:%M:%S)" "$*"; }
 
-if command -v podman >/dev/null 2>&1; then RUNTIME=podman
-elif docker info >/dev/null 2>&1; then RUNTIME=docker
-else die "no usable container runtime"; fi
+# shellcheck source=tools/lib/container_runtime.sh
+. "${ROOT}/tools/lib/container_runtime.sh"
+cr_require || die "no usable container runtime"
+cr_scrub_image "$IMAGE"
 [ -x "$PY" ] || die "no venv — python3 -m venv .venv && .venv/bin/pip install -e ."
 
 cleanup() {
     [ "$KEEP" -eq 1 ] && { log "leaving ${CONTAINER} on port ${PORT}"; return 0; }
-    "$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1
+    crun rm -f "$CONTAINER" >/dev/null 2>&1
     return 0
 }
 trap cleanup EXIT
@@ -111,7 +124,15 @@ jsonarg() { [ -n "$JSON_DIR" ] && printf -- '--json\n%s/%s.json' "$JSON_DIR" "$1
 
 log "image ${LABEL}"
 log "generating one source file from '${SCENARIO}'"
-rm -rf "$SRCDIR" "$LIBDIR" "$CONFIG"
+
+# A container that ran as root in these bind mounts leaves files this account cannot unlink, so a
+# plain `rm -rf` here fails quietly and the run then reads the PREVIOUS run's destination file and
+# reports on it as though it were this one. cr_force_rm finishes the job through the runtime and
+# says so if it cannot, and a container left over from an interrupted run is removed before it can
+# hold the port.
+cr_remove_stale "listenarr-asintag-"
+cr_force_rm "$SRCDIR" "$LIBDIR" "$CONFIG" "${ROOT}/build/asintag-control.m4b" \
+    || die "a previous run's files are still here; this run would measure them"
 mkdir -p "$SRCDIR" "$LIBDIR" "$CONFIG"
 "$PY" "${ROOT}/tools/generate_library.py" --scenario "$SCENARIO" --out "$SRCDIR" \
     --seed "$SEED" --only-asin "$ASIN" --force >/dev/null || die "generation failed"
@@ -148,15 +169,22 @@ if [ $? -eq 0 ]; then
 fi
 
 # --- The import ------------------------------------------------------------------------
-"$RUNTIME" rm -f "$CONTAINER" >/dev/null 2>&1
-"$RUNTIME" run -d --name "$CONTAINER" -p "${PORT}:4545" -e LISTENARR_LOG_LEVEL=Debug \
+# The destination has to start empty. A stale file here reads exactly like a freshly imported one,
+# and the tag on it would be a previous build's answer.
+[ -z "$(find "$LIBDIR" -type f -print -quit 2>/dev/null)" ] \
+    || die "the destination folder is not empty before the import, so nothing found in it afterwards
+        could be attributed to this run"
+
+crun rm -f "$CONTAINER" >/dev/null 2>&1
+crun run -d --name "$CONTAINER" -p "${PORT}:4545" -e LISTENARR_LOG_LEVEL=Debug \
+    "${CR_OWNERSHIP_ARGS[@]}" \
     -v "${SRCDIR}:/src" -v "${LIBDIR}:/audiobooks" -v "${CONFIG}:/app/config" \
     "$IMAGE" >/dev/null || die "could not start ${IMAGE}"
 
 API="http://localhost:${PORT}/api/v1"
 for _ in $(seq 1 120); do curl -fsS "${API}/system/status" >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS "${API}/system/status" >/dev/null 2>&1 || {
-    "$RUNTIME" logs "$CONTAINER" 2>&1 | tail -15; die "API never came up"; }
+    crun logs "$CONTAINER" 2>&1 | tail -15; die "API never came up"; }
 
 KEY=$("$PY" -c "import json; print(json.load(open('${CONFIG}/config.json'))['ApiKey'])") || die "no ApiKey"
 AUTH=(-H "X-Api-Key: ${KEY}" -H 'Content-Type: application/json')
@@ -198,40 +226,60 @@ done
 sleep 3   # let the enrichment step run after the file appears
 DEST="$(find "$LIBDIR" -type f -name '*.m4b' | head -1)"
 [ -n "$DEST" ] || {
-    "$RUNTIME" logs "$CONTAINER" 2>&1 | tail -20
+    crun logs "$CONTAINER" 2>&1 | tail -20
     die "no destination file after ${WAITED}s — the import never completed, so there is nothing to judge"
 }
 log "destination appeared after ${WAITED}s: ${DEST#"$ROOT"/}"
 
-# --- Did the enrichment step run at all? -----------------------------------------------
-LOGS="$("$RUNTIME" logs "$CONTAINER" 2>&1)"
+# --- The verdict: read the file --------------------------------------------------------
+"$PY" "${ROOT}/tools/asin_tag_probe.py" read "$DEST" --label imported \
+    --expect-asin "$ASIN" --ffprobe "$FFPROBE" $(jsonarg imported)
+VERDICT=$?
+if [ "$VERDICT" -eq 2 ]; then
+    fail "the destination file could not be read as tagged audio at all, so there is no file"
+    fail "        evidence either way. That is a broken or truncated destination, not a"
+    fail "        statement about the tag writer."
+    exit 2
+fi
+
+# --- Corroboration: what the server said about it --------------------------------------
+LOGS="$(crun logs "$CONTAINER" 2>&1)"
 WROTE=$(printf '%s' "$LOGS" | grep -c "Wrote ASIN tag")
 FAILED=$(printf '%s' "$LOGS" | grep -c "Failed to write ASIN tag")
-log "server log: ${WROTE} 'Wrote ASIN tag', ${FAILED} 'Failed to write ASIN tag'"
-if [ "$WROTE" -eq 0 ] && [ "$FAILED" -eq 0 ]; then
-    fail "the tag writer logged neither success nor failure, so the enrichment step never ran."
-    fail "        Nothing here is a statement about the writer."
-    exit 2
+if [ "$WROTE" -gt 0 ] || [ "$FAILED" -gt 0 ]; then
+    log "corroboration: ${WROTE} 'Wrote ASIN tag', ${FAILED} 'Failed to write ASIN tag'"
+else
+    log "NOTE: the server logged neither 'Wrote ASIN tag' nor 'Failed to write ASIN tag', so the"
+    log "      log corroborates nothing here. The writer's wording is the server's to change, and"
+    log "      a step that logs nothing looks the same as one whose message moved, so this does"
+    log "      not withhold the verdict below. The verdict is the file's."
 fi
 if [ "$FAILED" -gt 0 ]; then
     printf '%s' "$LOGS" | grep -A12 "Failed to write ASIN tag" | head -20
 fi
-
-# --- The verdict -----------------------------------------------------------------------
-"$PY" "${ROOT}/tools/asin_tag_probe.py" read "$DEST" --label imported \
-    --expect-asin "$ASIN" --ffprobe "$FFPROBE" $(jsonarg imported)
-VERDICT=$?
 
 echo
 if [ "$VERDICT" -eq 0 ]; then
     log "PASSED: the imported file carries ${ASIN} in its own tags."
     log "        The control read tagged and the source read untagged in the same run, so the"
     log "        reader was shown capable of both answers."
+    [ "$WROTE" -eq 0 ] && [ "$FAILED" -eq 0 ] && \
+        log "        The file carries the tag whatever the log does or does not say about it."
 else
     fail "the imported file carries no ASIN of its own."
     fail "        The reader called the stamped control 'tagged' moments earlier, on a copy of"
     fail "        this same file, so the tag is genuinely absent rather than unreadable."
     fail "        The import itself reported success and the file is intact; only the"
     fail "        enrichment step silently did nothing."
+    if [ "$FAILED" -gt 0 ]; then
+        fail "        The server recorded the failure itself, above."
+    elif [ "$WROTE" -gt 0 ]; then
+        fail "        The server logged a successful write and the file disagrees with it."
+    else
+        fail "        The server logged nothing either way. The library record carried an ASIN,"
+        fail "        the destination folder started empty, and the destination file is here and"
+        fail "        readable, so 'nothing asked for a tag' and 'the import never ran' are"
+        fail "        already ruled out without the log's help."
+    fi
 fi
 exit "$VERDICT"

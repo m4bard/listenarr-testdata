@@ -54,14 +54,17 @@ IMAGE=""
 PORT=4641
 SETTLE=45
 CASES="outside inside"
+KEEP=0
 
 usage() {
     cat <<'USAGE'
-usage: validate_companion_import.sh --image <image> [--case outside|inside|both] [--port N] [--settle N]
+usage: validate_companion_import.sh --image <image> [--case outside|inside|both] [--port N]
+                                   [--settle N] [--keep]
 
   --case outside   source folder outside every configured root folder (the ordinary download shape)
   --case inside    source folder inside the configured root folder
   --case both      run both (default)
+  --keep           leave each case's tree under build/ instead of removing it
 USAGE
 }
 
@@ -78,6 +81,7 @@ while [ $# -gt 0 ]; do
                 *) echo "--case must be outside, inside or both" >&2; exit 2 ;;
             esac
             shift 2 ;;
+        --keep)   KEEP=1;      shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -86,14 +90,20 @@ done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="${ROOT}/.venv/bin/python"
-RUNTIME=podman
 
 log()  { printf '%s [comp] %s\n' "$(date +%H:%M:%S)" "$*"; }
 fail() { printf '%s [comp] FAIL: %s\n' "$(date +%H:%M:%S)" "$*"; }
 die()  { printf '%s [comp] ERROR: %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 2; }
 
-command -v "$RUNTIME" >/dev/null 2>&1 || die "podman required"
+# The runtime is probed rather than named. This tool used to require podman outright and
+# died on a host where docker was the working one, and naming a runtime it cannot drive is
+# the one failure that says nothing about companion files.
+# shellcheck source=tools/lib/container_runtime.sh
+. "${ROOT}/tools/lib/container_runtime.sh"
+cr_require || die "no usable container runtime"
+cr_scrub_image "$IMAGE"
 [ -x "$PY" ] || die "no venv — python3 -m venv .venv && .venv/bin/pip install -e ."
+cr_remove_stale "compimp-"
 
 REPORT="$(mktemp)"
 trap 'rm -f "$REPORT"' EXIT
@@ -101,9 +111,17 @@ trap 'rm -f "$REPORT"' EXIT
 # Run one case. Args: <case name: outside|inside>
 run_case() {
     local casename="$1"
-    local base; base="$(mktemp -d)"
     local container="compimp-${casename}-$$"
     local sentinel="LISTENARR-HARNESS-COMPANION-${casename}-$$"
+
+    # A named tree under build/ rather than a fresh mktemp directory per run, for two
+    # reasons. Every path this tool prints can then be shown relative to the repo, and a
+    # second run has to clear the first one's tree before it can start, which is the only
+    # way the cleanup below is ever actually exercised. cr_force_rm is what clears it: a
+    # container that wrote here as root leaves files this account cannot unlink, and a
+    # plain `rm -rf` would fail quietly and leave the run inspecting the previous tree.
+    local base="${ROOT}/build/compimp-${casename}"
+    cr_force_rm "$base" || { fail "${casename}: a previous run's tree is still here"; return 2; }
     mkdir -p "$base/lib" "$base/src" "$base/cfg"
     chmod 755 "$base"
 
@@ -132,13 +150,14 @@ run_case() {
         || { fail "${casename}: could not provision ffprobe"; return 2; }
 
     log "  start ${IMAGE}"
-    "$RUNTIME" run -d --name "$container" -p "${PORT}:4545" -e LISTENARR_LOG_LEVEL=Debug \
+    crun run -d --name "$container" -p "${PORT}:4545" -e LISTENARR_LOG_LEVEL=Debug \
+        "${CR_OWNERSHIP_ARGS[@]}" \
         -v "$base:/data" -v "$base/cfg:/app/config" "$IMAGE" >/dev/null \
         || { fail "${casename}: container did not start"; return 2; }
 
     local api="http://localhost:${PORT}/api/v1" up=0 _
     for _ in $(seq 1 60); do curl -fsS "${api}/system/status" >/dev/null 2>&1 && { up=1; break; }; sleep 2; done
-    [ "$up" -eq 1 ] || { "$RUNTIME" logs "$container" 2>&1 | tail -15; fail "${casename}: API never came up"; return 2; }
+    [ "$up" -eq 1 ] || { crun logs "$container" 2>&1 | tail -15; fail "${casename}: API never came up"; return 2; }
 
     local key; key="$("$PY" -c "import json;print(json.load(open('${base}/cfg/config.json'))['ApiKey'])" 2>/dev/null)"
     [ -n "$key" ] || { fail "${casename}: no api key"; return 2; }
@@ -207,7 +226,7 @@ REQEOF
     # Corroborate with the server's own account of the pass, the way Bug 16's check leaned on the
     # `Blocked` line. A filesystem observation plus the log line that explains it is a different claim
     # from a filesystem observation alone.
-    local logs; logs="$("$RUNTIME" logs "$container" 2>&1)"
+    local logs; logs="$(crun logs "$container" 2>&1)"
     local n_failed n_boundary passline
     n_failed="$(printf '%s' "$logs"   | grep -cF 'Failed to import companion file' || true)"
     n_boundary="$(printf '%s' "$logs" | grep -cF 'The requested directory boundary is not a configured root folder' || true)"
@@ -301,7 +320,12 @@ with open(os.environ["REPORT"], "a", encoding="utf-8") as handle:
 sys.exit({"pass": 0, "reproduced": 1}.get(verdict, 2))
 PY
     local rc=$?
-    "$RUNTIME" rm -f "$container" >/dev/null 2>&1 || true
+    crun rm -f "$container" >/dev/null 2>&1 || true
+    if [ "$KEEP" -eq 1 ]; then
+        log "  keeping build/compimp-${casename}"
+    else
+        cr_force_rm "$base" || fail "${casename}: could not clear build/compimp-${casename}"
+    fi
     return $rc
 }
 

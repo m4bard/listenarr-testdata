@@ -294,6 +294,19 @@ published tag. Each asserts a single behaviour end to end against a running cont
 timing or scoring a whole scan, and each provisions a pinned ffprobe first so the metadata step does
 not lose the first-boot download race.
 
+Two of them (`validate_asin_tag_embed.sh` and `validate_companion_import.sh`) take their container
+runtime from `tools/lib/container_runtime.sh`, which probes for one that works instead of looking
+one up on `PATH`. A host can carry both binaries with every container under docker and an empty
+rootless podman store, and picking the runtime by name then observes nothing and reports it as a
+finding. A runtime counts as usable when `version` and `ps` both succeed against it; docker wins a
+tie, `LISTENARR_TEST_RUNTIME=podman|docker` overrides the probe, and an account outside the group
+that owns the socket is retried once through `sudo -n` and told plainly what it needs if that fails
+too, rather than being left at a password prompt. The same file handles the mess a rootful container
+leaves in a bind mount: the image's own `PUID`/`PGID` are set so its writes land owned by the
+caller, and anything already there that the caller cannot unlink is removed through a throwaway
+container before a run starts, since a `rm -rf` that fails quietly leaves the next run measuring the
+last one's files.
+
 To answer "what did this release change?" rather than one question at a time, **`regression_sweep.sh`**
 runs a set of them against one image and tabulates the verdicts. Every check generates its own
 library, provisions its own config, and starts its own container on its own port, so nothing outside
@@ -377,9 +390,16 @@ suggests is worse than one that covers little and admits it.
   places the writer puts one. Two gates run before the import and it refuses a verdict without
   both, because the reader has to be shown capable of both answers in the same run: a copy of the
   same file with the atom stamped on by hand must read `tagged`, and the file as it goes in must
-  read `untagged`. The server's own log lines are read as corroboration, and if the writer logged
-  neither success nor failure the enrichment step never ran and the result is inconclusive rather
-  than a finding. Exit `0` the ASIN was embedded, `1` it was not, `2` the run could not be judged.
+  read `untagged`. The verdict is then the destination file's: the source went in without an ASIN
+  and the library record carried one, so what the file says afterwards is a statement about the
+  writer. The server's own log lines are read as corroboration and recorded as a note, and a log
+  that says nothing no longer withholds a verdict the file already supports, because the writer's
+  wording belongs to the server and a step that logs nothing looks the same as one whose message
+  moved. A `Failed to write` line still brings its frames along, which is what names the cause.
+  The preconditions the log check used to stand in for are checked directly instead, each of them
+  ending the run on its own: the library record has to carry an ASIN, the destination folder has to
+  start empty, and the destination file has to be readable as audio. Exit `0` the ASIN was embedded,
+  `1` it was not, `2` the run could not be judged.
 - **`validate_sidecar_rename.sh`** (Listenarr#577) imports a book's audio, drops `cover.jpg` and
   `metadata.json` beside it, changes the naming pattern so the book must relocate, renames, and then
   looks at the filesystem to see whether the companions followed the audio. It asserts the correct

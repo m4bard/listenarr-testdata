@@ -2016,6 +2016,59 @@
       "librivox_same_language": true
     },
     {
+      "asin": "B0DHSHFQQH",
+      "title": "The Barsoom Collection: Books 1-6",
+      "subtitle": "The Master Mind of Mars; The Chessmen of Mars; Thuvia, Maid of Mars; The Warlord of Mars; The Gods of Mars; A Princess of Mars",
+      "authors": [
+        "Edgar Rice Burroughs"
+      ],
+      "narrators": [
+        "Christopher Ragland"
+      ],
+      "series": "Barsoom",
+      "series_asin": "B007D0J4H0",
+      "series_position": "1-6",
+      "release_date": "2024-10-03",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series-range",
+        "omnibus"
+      ],
+      "librivox_id": "205",
+      "librivox_title": "Princess of Mars",
+      "librivox_url": "https://librivox.org/a-princess-of-mars-by-edgar-rice-burroughs/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B0GVSJJBGN",
+      "title": "Anne Of Green Gables -Complete 8-Book Box Set",
+      "subtitle": null,
+      "authors": [
+        "L.M. Montgomery"
+      ],
+      "narrators": [
+        "Beth Kesler"
+      ],
+      "series": "Anne of Green Gables",
+      "series_asin": "B006K1O85G",
+      "series_position": "1-8",
+      "release_date": "2026-04-11",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series-range",
+        "omnibus",
+        "author-variant"
+      ],
+      "librivox_id": "146",
+      "librivox_title": "Anne of Green Gables",
+      "librivox_url": "https://librivox.org/anne-of-green-gables-by-lucy-maud-montgomery/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
       "asin": "B004Q1EFJQ",
       "title": "Anna of the Five Towns",
       "subtitle": null,

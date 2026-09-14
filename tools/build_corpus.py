@@ -295,6 +295,24 @@ SEEDS: list[tuple[str, str, str, list[str], str]] = [
     ("B0F84DFZ66", "Chesterton", "Father Brown", ["series-range", "omnibus"], "424"),
     ("B002V1PLZK", "Buchan", "Thirty-Nine Steps",
      ["series-range", "omnibus", "title-lies"], "2258"),
+    # Two more omnibuses, chosen because the individual books they cover are already
+    # seeded above. A release-shape preference is only testable where both shapes of the
+    # same series exist, and typing a plausible bundle title into a test is exactly the
+    # "reproduces only on our setup" failure this corpus exists to stop.
+    #
+    # B0DHSHFQQH covers Barsoom 1-6, of which A Princess of Mars, The Gods of Mars and
+    # The Warlord of Mars are seeded individually. B0GVSJJBGN covers Anne of Green
+    # Gables 1-8, of which the first two are seeded individually, and its title is the
+    # awkward one: "-Complete" is a hyphen with no digit before it and "8-Book" is a
+    # digit joined to a word, so a range regex written carelessly answers wrong on it.
+    # It also credits "L.M. Montgomery", a third spelling beside the "L. M. Montgomery"
+    # and "Lucy Maud Montgomery" already in the corpus.
+    ("B0DHSHFQQH", "Burroughs", "Barsoom Collection", ["series-range", "omnibus"], "205"),
+    # The fragment is "8-Book Box Set" and not "Green Gables", which the corpus already
+    # has two Montgomerys matching: a fragment that also names another book by the same
+    # author would let a drifted ASIN resolve to the wrong one and still pass.
+    ("B0GVSJJBGN", "Montgomery", "8-Book Box Set",
+     ["series-range", "omnibus", "author-variant"], "146"),
     ("B004Q1EFJQ", "Bennett", "Anna of the Five Towns", ["series-no-position"], "3298"),
     ("B077SHDLW9", "Hornung", "Amateur Cracksman", ["series-absent"], "123"),
 

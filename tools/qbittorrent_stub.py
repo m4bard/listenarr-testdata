@@ -39,10 +39,41 @@ Torrents are emitted completed-and-seeding by default so they reach the Activity
 Listenarr hides unmatched ACTIVE items from an external client, and only surfaces unmatched
 COMPLETED ones (and only when ShowCompletedExternalDownloads is on). --state overrides this.
 
-Writes nothing and reads nothing. Serves from memory and exits on SIGTERM.
+REFLECT MODE, for an automatic post-download import. The synthetic queue above is enough to
+measure what a queue RESPONSE does to the poller, and no use at all for measuring an import,
+because an import needs the client to point at files that are really there. Its default
+`save_path` of /downloads/stub does not exist, `torrents/files` answers `[]`, and the hashes it
+serves are derived from a counter rather than from what was submitted, so Listenarr can never
+tie its own grab to a queue row.
+
+`--reflect-root` switches all three:
+
+    --reflect-root HOSTDIR       the directory on this host that holds the content
+    --reflect-save-path PATH     what to report as save_path, i.e. HOSTDIR as the APPLICATION
+                                 sees it (inside its container). Defaults to --reflect-root,
+                                 which is only right when both sides see the same path.
+    --reflect-entry NAME         the top-level entry inside HOSTDIR that is this torrent: a
+                                 single file for a single-file torrent, a directory for a
+                                 multi-file one.
+
+In reflect mode `torrents/info` serves one torrent per info-hash that was actually submitted to
+`torrents/add`, so the hash Listenarr grabbed is the hash it finds. `torrents/files` reports the
+real files, relative to save_path exactly as qBittorrent does — a bare filename for a
+single-file torrent, `entry/relative/path` for a directory — and `torrents/properties` reports
+the same save_path. Sizes are read from disk, so a reported size and an on-disk size cannot
+disagree by accident.
+
+`--hold-open` keeps a read descriptor on every reflected file for the life of the stub, which is
+the closest a stub gets to "still seeding": the point is to be able to say whether an import
+behaves differently when the client still has the file open, rather than to assume it does not.
+
+Writes nothing and reads nothing outside --reflect-root, which it only ever reads. Serves from
+memory and exits on SIGTERM.
 
     ./tools/qbittorrent_stub.py --port 8111 --count 6
     ./tools/qbittorrent_stub.py --port 8111 --count 6 --malformed-index 3
+    ./tools/qbittorrent_stub.py --port 8111 --reflect-root /tmp/dl \
+        --reflect-save-path /downloads --reflect-entry 'Some Book.mp3'
 """
 
 from __future__ import annotations
@@ -51,12 +82,14 @@ import argparse
 import hashlib
 import json
 import logging
+import os
+import pathlib
 import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import unquote_to_bytes, urlparse
+from urllib.parse import parse_qs, unquote_to_bytes, urlparse
 
 LOG = logging.getLogger("qbstub")
 
@@ -132,6 +165,108 @@ def extract_info_hash(body: bytes) -> str | None:
     return "body:" + hashlib.sha1(body).hexdigest()
 
 
+class ReflectedContent:
+    """One torrent described by what is actually on disk under --reflect-root.
+
+    qBittorrent reports file names RELATIVE to save_path, and the shape of that relative name
+    is the difference between a single-file torrent and a directory torrent: a bare filename
+    in the first case, `entry/child` in the second. Listenarr reconstructs the content path
+    from save_path plus those names rather than from any field the client sends for it
+    (TorrentClientPathMapper.ResolveQbittorrentContentPath), so getting the relative shape
+    right is the whole job here.
+
+    Sizes come from stat(), so the size the client reports and the size on disk are the same
+    number by construction rather than by agreement.
+    """
+
+    def __init__(
+        self,
+        host_root: pathlib.Path,
+        save_path: str,
+        entry: str,
+        name: str | None = None,
+        hold_open: bool = False,
+    ) -> None:
+        self.host_root = host_root.resolve()
+        self.save_path = save_path.rstrip("/") or "/"
+        self.entry = entry.strip("/")
+        self.name = name or self.entry
+        self.target = self.host_root / self.entry
+        if not self.target.exists():
+            raise FileNotFoundError(
+                f"--reflect-entry {self.entry!r} not found under {self.host_root}"
+            )
+        self.files = self._discover()
+        self._held: list[int] = []
+        if hold_open:
+            self._hold()
+
+    def _discover(self) -> list[tuple[str, int]]:
+        """(relative-name-as-the-client-reports-it, size) for every file in the torrent."""
+        if self.target.is_file():
+            # A single-file torrent's one file is reported as a bare name, with no directory
+            # component at all, even though it sits directly in save_path.
+            return [(self.target.name, self.target.stat().st_size)]
+        found = [
+            (path.relative_to(self.host_root).as_posix(), path.stat().st_size)
+            for path in sorted(self.target.rglob("*"))
+            if path.is_file()
+        ]
+        if not found:
+            raise FileNotFoundError(f"--reflect-entry {self.entry!r} contains no files")
+        return found
+
+    def _hold(self) -> None:
+        for relative, _ in self.files:
+            self._held.append(os.open(self.host_root / relative, os.O_RDONLY))
+        LOG.info("holding %d read descriptor(s) open on the reflected content", len(self._held))
+
+    @property
+    def total_size(self) -> int:
+        return sum(size for _, size in self.files)
+
+    def torrent(self, info_hash: str, state: str, progress: float) -> dict[str, Any]:
+        return {
+            "hash": info_hash,
+            "name": self.name,
+            "progress": progress,
+            "size": self.total_size,
+            "downloaded": self.total_size,
+            "dlspeed": 0,
+            "eta": 8640000,
+            "state": state,
+            "added_on": 1700000000,
+            "num_seeds": 3,
+            "num_leechs": 1,
+            "ratio": 1.5,
+            "save_path": self.save_path,
+            "content_path": f"{self.save_path}/{self.entry}",
+            "category": "",
+            "seeding_time": 600,
+            "ratio_limit": -2,
+            "seeding_time_limit": -2,
+        }
+
+    def files_json(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "index": index,
+                "name": relative,
+                "size": size,
+                "progress": 1.0,
+                "priority": 1,
+                "is_seed": True,
+                "piece_range": [0, 1],
+                "availability": 1.0,
+            }
+            for index, (relative, size) in enumerate(self.files)
+        ]
+
+    def describe(self) -> str:
+        listing = ", ".join(f"{relative} ({size}B)" for relative, size in self.files)
+        return f"name={self.name!r} save_path={self.save_path!r} files=[{listing}]"
+
+
 class StubState:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -141,8 +276,14 @@ class StubState:
         # across the session, which is exactly why a second submission of the same
         # release is rejected rather than silently re-added.
         self.added_hashes: set[str] = set()
+        # Insertion order matters in reflect mode: the queue is served in the order the
+        # hashes arrived, so a run that grabs twice is readable in the response.
+        self.added_order: list[str] = []
+        self.reflected: ReflectedContent | None = None
 
-    def torrents_json(self) -> str:
+    def torrents_json(self, hashes_filter: list[str] | None = None) -> str:
+        if self.reflected is not None:
+            return self._reflected_torrents_json(hashes_filter)
         torrents = [
             build_torrent(i, self.args.state, self.args.progress)
             for i in range(1, self.args.count + 1)
@@ -159,6 +300,32 @@ class StubState:
             )
         else:
             LOG.info("serving %d torrents, all well formed", len(torrents))
+        return json.dumps(torrents)
+
+    def _reflected_torrents_json(self, hashes_filter: list[str] | None) -> str:
+        """Serve one torrent per hash that was really submitted, all describing the content.
+
+        Serving nothing until something has been added is deliberate. If the grab never
+        reached the client, the queue is empty and that is a different diagnosis from a
+        queue row the importer would not touch; a stub that invented a row would erase the
+        difference.
+        """
+        assert self.reflected is not None
+        with self.lock:
+            hashes = list(self.added_order)
+        if hashes_filter:
+            wanted = {value.lower() for value in hashes_filter}
+            hashes = [value for value in hashes if value.lower() in wanted]
+        torrents = [
+            self.reflected.torrent(info_hash, self.args.state, self.args.progress)
+            for info_hash in hashes
+        ]
+        LOG.info(
+            "reflect: serving %d torrent(s) for %s%s",
+            len(torrents),
+            self.reflected.describe(),
+            f" (filtered to {hashes_filter})" if hashes_filter else "",
+        )
         return json.dumps(torrents)
 
 
@@ -201,6 +368,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v2/torrents/add":
             self._handle_add(body)
             return
+        if path == "/api/v2/torrents/setCategory":
+            # Listenarr's mark-as-imported step posts here when a postImportCategory is
+            # configured, and treats a non-2xx as "unable to mark the item imported", which
+            # blocks the import for a reason that has nothing to do with the files. Answering
+            # 200 keeps that out of the way of whatever is being measured.
+            LOG.info("setCategory accepted")
+            self._send("Ok.", "text/plain")
+            return
         self.send_error(404)
 
     def _handle_add(self, body: bytes) -> None:
@@ -216,6 +391,7 @@ class Handler(BaseHTTPRequestHandler):
             already = info_hash is not None and info_hash in self.state.added_hashes
             if not already and info_hash is not None:
                 self.state.added_hashes.add(info_hash)
+                self.state.added_order.append(info_hash)
             held = len(self.state.added_hashes)
 
         if already and self.state.args.conflict_on_duplicate:
@@ -230,7 +406,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send("Ok.", "text/plain")
 
     def do_GET(self) -> None:
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/api/v2/app/version":
             self._send("v5.0.2", "text/plain")
         elif path == "/api/v2/app/webapiVersion":
@@ -247,11 +424,20 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/v2/torrents/info":
             with self.state.lock:
                 self.state.info_requests += 1
-            self._send(self.state.torrents_json())
+            hashes = (parse_qs(parsed.query).get("hashes") or [""])[0]
+            self._send(self.state.torrents_json(
+                [value for value in hashes.split("|") if value] or None
+            ))
         elif path == "/api/v2/torrents/files":
-            self._send("[]")
+            reflected = self.state.reflected
+            if reflected is None:
+                self._send("[]")
+            else:
+                self._send(json.dumps(reflected.files_json()))
         elif path == "/api/v2/torrents/properties":
-            self._send(json.dumps({"save_path": "/downloads/stub"}))
+            reflected = self.state.reflected
+            save_path = "/downloads/stub" if reflected is None else reflected.save_path
+            self._send(json.dumps({"save_path": save_path}))
         else:
             self.send_error(404)
 
@@ -288,6 +474,46 @@ def main() -> int:
     parser.add_argument(
         "--progress", type=float, default=1.0, help="progress fraction for every torrent"
     )
+    parser.add_argument(
+        "--reflect-root",
+        metavar="HOSTDIR",
+        help=(
+            "serve one torrent describing what is really on disk under HOSTDIR instead of the "
+            "synthetic queue. Needed for anything that measures an IMPORT, because an import "
+            "reads the files the client points at."
+        ),
+    )
+    parser.add_argument(
+        "--reflect-save-path",
+        metavar="PATH",
+        help=(
+            "the save_path to report, i.e. --reflect-root as the application sees it. Defaults "
+            "to --reflect-root, which is correct only when both sides see the same path."
+        ),
+    )
+    parser.add_argument(
+        "--reflect-entry",
+        metavar="NAME",
+        help=(
+            "the top-level entry inside --reflect-root that is this torrent: a file for a "
+            "single-file torrent, a directory for a multi-file one. Defaults to the only entry "
+            "when the root holds exactly one."
+        ),
+    )
+    parser.add_argument(
+        "--reflect-name",
+        metavar="TITLE",
+        help="torrent name to report; defaults to --reflect-entry",
+    )
+    parser.add_argument(
+        "--hold-open",
+        action="store_true",
+        help=(
+            "keep a read descriptor open on every reflected file, the nearest a stub gets to "
+            "a torrent still being seeded, so 'the client still has it open' can be measured "
+            "rather than assumed"
+        ),
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -300,14 +526,49 @@ def main() -> int:
     if args.malformed_index and not 1 <= args.malformed_index <= args.count:
         parser.error(f"--malformed-index must be between 1 and --count ({args.count})")
 
-    Handler.state = StubState(args)
+    if args.reflect_save_path and not args.reflect_root:
+        parser.error("--reflect-save-path is meaningless without --reflect-root")
+    if args.reflect_entry and not args.reflect_root:
+        parser.error("--reflect-entry is meaningless without --reflect-root")
+    if args.hold_open and not args.reflect_root:
+        parser.error("--hold-open is meaningless without --reflect-root: nothing to hold")
+
+    state = StubState(args)
+    if args.reflect_root:
+        root = pathlib.Path(args.reflect_root)
+        if not root.is_dir():
+            parser.error(f"--reflect-root {args.reflect_root!r} is not a directory")
+        entry = args.reflect_entry
+        if not entry:
+            candidates = sorted(child.name for child in root.iterdir())
+            if len(candidates) != 1:
+                parser.error(
+                    f"--reflect-root holds {len(candidates)} entries, so --reflect-entry is "
+                    "required to say which one is the torrent"
+                )
+            entry = candidates[0]
+        try:
+            state.reflected = ReflectedContent(
+                root,
+                args.reflect_save_path or str(root),
+                entry,
+                args.reflect_name,
+                hold_open=args.hold_open,
+            )
+        except (FileNotFoundError, OSError) as error:
+            parser.error(str(error))
+
+    Handler.state = state
     server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
-    LOG.info(
-        "listening on :%d, %d torrents, malformed index %s",
-        args.port,
-        args.count,
-        args.malformed_index or "none",
-    )
+    if state.reflected is not None:
+        LOG.info("listening on :%d, reflecting %s", args.port, state.reflected.describe())
+    else:
+        LOG.info(
+            "listening on :%d, %d torrents, malformed index %s",
+            args.port,
+            args.count,
+            args.malformed_index or "none",
+        )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

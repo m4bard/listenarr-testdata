@@ -61,7 +61,17 @@ CONTAINER_FOR_DIALECT = {
     "vorbis": "flac",
     "none": "mp3",
 }
-DIALECT_FOR_EXT = {"m4b": "mp4-atoms", "m4a": "mp4-atoms", "mp3": "id3v24", "flac": "vorbis"}
+# ".mp4" is here because a reporter saying their files are "in mp4 format" may mean a file
+# literally named .mp4 rather than an MP4 container named .m4b, and the two are not
+# necessarily treated alike: only one of them is in Listenarr's audio-extension set.
+# Being able to emit both is what lets that be measured instead of argued about.
+DIALECT_FOR_EXT = {
+    "m4b": "mp4-atoms",
+    "m4a": "mp4-atoms",
+    "mp4": "mp4-atoms",
+    "mp3": "id3v24",
+    "flac": "vorbis",
+}
 
 
 # --------------------------------------------------------------------------
@@ -712,7 +722,7 @@ class SilenceFactory:
     """
 
     CODECS: ClassVar[dict[str, tuple[str, str]]] = {
-        "m4b": ("aac", "mp4"), "m4a": ("aac", "mp4"),
+        "m4b": ("aac", "mp4"), "m4a": ("aac", "mp4"), "mp4": ("aac", "mp4"),
         "mp3": ("libmp3lame", "mp3"), "flac": ("flac", "flac"),
     }
 

@@ -109,3 +109,25 @@ All three are legitimate and inferred claims are often right. The failure is not
 because a claim stated flatly has to be retracted when it turns out wrong, while a claim labelled
 as inference is corrected in a sentence. Both have happened here within a single day, and the
 difference in cost was large.
+
+## Assert on the refusal, not on receiving the secret
+
+A check that a caller is denied access to a secret should assert on the REFUSAL, a status code or a
+boolean, and must not require the checking session to receive the live secret value. The two are not
+the same test even when they look adjacent.
+
+If the assertion is "the caller got a 401" or "the response body did not contain the key", the check
+never holds the secret and there is nothing to leak. If the assertion is "we fetched the key and
+confirmed it matched", the observer is now holding the very value the check exists to protect,
+discarded afterwards or not. The second form is worse regardless of who runs it, and an automated
+session it will trip a safety classifier, correctly.
+
+This surfaced when an SSRF/auth-bypass preflight was designed to fetch a live apikey endpoint, first
+plain then with a spoofed forwarding header. The session's classifier hard-denied the fetch, twice,
+independent of any in-chat approval. The right response was not to find an endpoint returning the
+same data that happened not to trip the filter, which is routing around a safety decision the same
+way as ignoring a failing boundary check. The right response is to redesign the assertion so it
+never needs the real value: a refused request proves the refusal without the secret ever being read.
+
+A classifier denial, like a failing `doctor.sh` or `scrub.py`, is the system working. If a check can
+only be run by defeating it, the check is the thing to change.

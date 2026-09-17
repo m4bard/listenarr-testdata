@@ -74,7 +74,8 @@ validate_scan_attribution.sh — show which files a scan attributes to one audio
   --folder-variant SPEC
                     spell one book's FOLDER differently from its record while the tags and
                     the record keep the canonical form, as KEY or KEY:ASIN,ASIN. Repeatable.
-                    Known keys: drop-leading-article, author-initials. This is how a
+                    Run 'generate_library.py --list-folder-variants' for the keys, which is
+                    the same list this forwards to rather than a copy of it. This is how a
                     tolerant folder matcher gets something to be tolerant of, and scoping it
                     to one ASIN leaves the sibling in ordinary form so an over-reach shows up.
   --port N          host port (default: ${PORT})

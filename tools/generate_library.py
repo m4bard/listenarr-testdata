@@ -584,9 +584,67 @@ def author_initials(name: str) -> str:
     return f"{given} {parts[-1]}"
 
 
+def _append_credential(name: str, credential: str, separator: str = ", ") -> str:
+    """Credit the folder with something the record does not carry, or leave it alone.
+
+    A name that already ends in the credential is returned unchanged, which is how the caller
+    learns this book cannot express the variant. Comparison is case-insensitive on the last
+    word so 'Jr' and 'JR' both count as already present.
+    """
+    tail = name.split()[-1].strip(".,").lower() if name.split() else ""
+    if tail == credential.strip(".,").lower():
+        return name
+    return f"{name}{separator}{credential}"
+
+
+def author_doctorate(name: str) -> str:
+    """'Arthur Conan Doyle' -> 'Arthur Conan Doyle, PhD'.
+
+    The professional post-nominal every implementation thinks of first, so it is the one that
+    says whether the tolerance exists at all rather than how wide it is.
+    """
+    return _append_credential(name, "PhD")
+
+
+def author_generational(name: str) -> str:
+    """'Arthur Conan Doyle' -> 'Arthur Conan Doyle Jr'.
+
+    A generational suffix, not a credential: no punctuation separates it from the surname, and
+    unlike a degree it can genuinely distinguish two people who share a name.
+    """
+    return _append_credential(name, "Jr", separator=" ")
+
+
+def author_uncommon_credential(name: str) -> str:
+    """'Arthur Conan Doyle' -> 'Arthur Conan Doyle, CFP'.
+
+    Same shape as the doctorate variant and a different answer from any implementation that
+    curates a list of known post-nominals rather than applying a rule. CFP and M.Ed. are both
+    named in the PR #784 problem statement, so neither is a strawman; CFP is used here because
+    a folder ending in a literal '.' is a separate path hazard and would confound the result.
+    """
+    return _append_credential(name, "CFP")
+
+
+def author_honorific(name: str) -> str:
+    """'Arthur Conan Doyle' -> 'Dr. Arthur Conan Doyle'.
+
+    Leading rather than trailing. The distinction matters because stripping a suffix and
+    stripping a prefix are different code, and the #784 report's own example ('M.Ed. Karla
+    McLaren' for a 'Karla McLaren' folder) is the leading form.
+    """
+    if name.lower().startswith(("dr.", "dr ", "sir ", "prof")):
+        return name
+    return f"Dr. {name}"
+
+
 FOLDER_VARIANTS: list[FolderVariantSpec] = [
     FolderVariantSpec("drop-leading-article", "title", drop_leading_article),
     FolderVariantSpec("author-initials", "author", author_initials),
+    FolderVariantSpec("author-postnominal", "author", author_doctorate),
+    FolderVariantSpec("author-generational", "author", author_generational),
+    FolderVariantSpec("author-postnominal-uncommon", "author", author_uncommon_credential),
+    FolderVariantSpec("author-honorific", "author", author_honorific),
 ]
 
 FOLDER_VARIANTS_BY_KEY = {variant.key: variant for variant in FOLDER_VARIANTS}

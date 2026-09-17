@@ -29,7 +29,11 @@ from generate_library import (
     FOLDER_VARIANTS_BY_KEY,
     Meta,
     apply_folder_variant,
+    author_doctorate,
+    author_generational,
+    author_honorific,
     author_initials,
+    author_uncommon_credential,
     drop_leading_article,
     folder_variant_for,
     generate,
@@ -66,6 +70,27 @@ class TestTransforms:
     def test_an_already_initialised_name_is_unchanged(self) -> None:
         assert author_initials("L. M. Montgomery") == "L. M. Montgomery"
         assert author_initials("Homer") == "Homer"
+
+    def test_credits_the_folder_with_a_post_nominal(self) -> None:
+        assert author_doctorate("Arthur Conan Doyle") == "Arthur Conan Doyle, PhD"
+        assert author_generational("Arthur Conan Doyle") == "Arthur Conan Doyle Jr"
+        assert author_uncommon_credential("Arthur Conan Doyle") == "Arthur Conan Doyle, CFP"
+
+    def test_the_honorific_leads_rather_than_trails(self) -> None:
+        assert author_honorific("Arthur Conan Doyle") == "Dr. Arthur Conan Doyle"
+        assert author_honorific("Dr. Arthur Conan Doyle") == "Dr. Arthur Conan Doyle"
+
+    def test_a_credential_already_present_is_not_doubled(self) -> None:
+        # Otherwise the manifest would claim a disagreement one credential wide when the
+        # folder and the record actually differ by two.
+        assert author_doctorate("Jane Doe, PhD") == "Jane Doe, PhD"
+        assert author_generational("Martin King JR") == "Martin King JR"
+
+    def test_no_variant_leaves_a_folder_ending_in_a_dot(self) -> None:
+        """A trailing '.' is its own path hazard and would confound an attribution result."""
+        for transform in (author_doctorate, author_generational,
+                          author_uncommon_credential, author_honorific):
+            assert not transform("Arthur Conan Doyle").endswith(".")
 
 
 class TestApplication:
@@ -148,6 +173,50 @@ class TestGeneratedLibrary:
         # scan root for either book full of the other book's audio.
         assert by_asin[GABLES]["path"].startswith("L. M. Montgomery/Anne of Green Gables/")
         assert by_asin[GABLES]["folder_variant"] is None
+
+    def test_the_post_nominal_case_credits_one_author_folder_and_not_the_sibling(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        manifest = self._generate(
+            tmp_path / "lib", [HOUND, SIGN], f"author-postnominal:{HOUND}")
+        by_asin = {e["belongs_to_asin"]: e for e in manifest["entries"]}
+
+        target = by_asin[HOUND]
+        assert target["path"].startswith(
+            "Arthur Conan Doyle, PhD/The Hound of the Baskervilles/")
+        assert target["folder_variant"] == "author-postnominal"
+        # The record and the tags keep the plain name; only the path carries the credential,
+        # so a scan that links this file did so by tolerating the folder and not by reading
+        # the tags.
+        assert target["true_authors"] == ["Arthur Conan Doyle"]
+        assert target["tags_written"]["artist"] == "Arthur Conan Doyle"
+        # The title segment is untouched, which is what keeps the author half separable from
+        # the article half when a result comes back.
+        assert target["true_title"] == "The Hound of the Baskervilles"
+
+        sibling = by_asin[SIGN]
+        assert sibling["path"].startswith("Arthur Conan Doyle/The Sign of Four/")
+        assert sibling["folder_variant"] is None
+
+        assert (tmp_path / "lib" / target["path"]).is_file()
+        assert (tmp_path / "lib" / sibling["path"]).is_file()
+
+    @pytest.mark.parametrize(("key", "folder"), [
+        ("author-generational", "Arthur Conan Doyle Jr"),
+        ("author-postnominal-uncommon", "Arthur Conan Doyle, CFP"),
+        ("author-honorific", "Dr. Arthur Conan Doyle"),
+    ])
+    def test_each_credential_shape_lands_on_disk(
+        self, tmp_path: pathlib.Path, key: str, folder: str
+    ) -> None:
+        manifest = self._generate(tmp_path / "lib", [HOUND, SIGN], f"{key}:{HOUND}")
+        by_asin = {e["belongs_to_asin"]: e for e in manifest["entries"]}
+        target = by_asin[HOUND]
+        assert target["path"].startswith(f"{folder}/The Hound of the Baskervilles/")
+        assert target["folder_variant"] == key
+        assert target["true_authors"] == ["Arthur Conan Doyle"]
+        assert (tmp_path / "lib" / target["path"]).is_file()
+        assert by_asin[SIGN]["path"].startswith("Arthur Conan Doyle/The Sign of Four/")
 
     def test_a_variant_the_book_cannot_express_is_recorded_as_absent(
         self, tmp_path: pathlib.Path

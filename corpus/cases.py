@@ -545,6 +545,45 @@ FOLDER_VARIANTS: list[FolderVariant] = [
         expect="link — same author. The shared author folder must not become the book's "
                "BasePath, and none of the neighbour's files may be claimed",
     ),
+    FolderVariant(
+        key="author-postnominal",
+        note="The author folder carries a professional post-nominal the record does not: "
+             "record 'Arthur Conan Doyle', folder 'Arthur Conan Doyle, PhD'. Close to "
+             "lossless as tolerances go, because almost nothing distinguishes two authors by "
+             "degree alone.",
+        expect="link — same author. The sibling in ordinary form under its own folder must "
+               "not be claimed",
+    ),
+    FolderVariant(
+        key="author-generational",
+        note="The author folder carries a generational suffix the record does not: record "
+             "'Arthur Conan Doyle', folder 'Arthur Conan Doyle Jr'. Read alongside the "
+             "post-nominal case rather than as a copy of it: a degree never distinguishes two "
+             "people, and 'Jr' against 'Sr' is the one suffix that does.",
+        expect="link — same author, on the usual reading. A library holding both a father and "
+               "a son is where that reading costs something, and the sibling must still not "
+               "be claimed",
+    ),
+    FolderVariant(
+        key="author-postnominal-uncommon",
+        note="The same shape as author-postnominal with a credential outside the handful "
+             "everyone thinks of first: folder 'Arthur Conan Doyle, CFP'. It is the control "
+             "for the post-nominal case rather than another case. An implementation that "
+             "curates a list answers these two differently and one that applies a rule "
+             "answers them the same, and a run where BOTH link proves the harness reached the "
+             "folder at all.",
+        expect="depends on the implementation, which is the point. Report it beside "
+               "author-postnominal from the same run, never on its own",
+    ),
+    FolderVariant(
+        key="author-honorific",
+        note="The credential leads rather than trails: record 'Arthur Conan Doyle', folder "
+             "'Dr. Arthur Conan Doyle'. Stripping a prefix is different code from stripping a "
+             "suffix, and the PR #784 report's own example ('M.Ed. Karla McLaren' for a "
+             "'Karla McLaren' folder) is the leading form.",
+        expect="depends on the implementation. A suffix-only tolerance reports this as not "
+               "linked, which is a gap rather than a regression",
+    ),
 ]
 
 

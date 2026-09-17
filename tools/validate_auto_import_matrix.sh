@@ -57,6 +57,11 @@ SETTLE=180          # seconds to wait for a download to reach a terminal state
 ONLY=""
 KEEP=0
 WEAK_FS=0
+# Where each case's working directory goes, which decides the FILESYSTEM the download
+# directory is on. The default temp directory here is tmpfs, and tmpfs, ZFS, ext4 and a FUSE
+# mount answer the durable-identity probes differently, so this is an axis rather than a
+# detail. A row that changes it must change nothing else.
+BASE_DIR="${TMPDIR:-/tmp}"
 
 # Ports known to be held by stale stubs from earlier sessions, or unattributable. Skipped
 # outright: a stale stub answers, authenticates and serves a queue that has nothing to do with
@@ -71,6 +76,7 @@ while [ $# -gt 0 ]; do
         --only)      ONLY="$2";      shift 2 ;;
         --keep)      KEEP=1;         shift ;;
         --weak-fs)   WEAK_FS=1;      shift ;;
+        --base-dir)  BASE_DIR="$2";  shift 2 ;;
         -h|--help)   sed -n '2,50p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -180,7 +186,7 @@ run_case() {
 
     local container="m890-${name}" network="m890-${name}"
     local base port stub_port stub_pid stub_log
-    base="$(mktemp -d -t m890-XXXXXX)"
+    base="$(mktemp -d "${BASE_DIR%/}/m890-XXXXXX")"
     CASE_LOG="${ROOT}/m890-${name}.container.log"
 
     port="$(pick_port 14700 14799)" || return 1
@@ -191,6 +197,7 @@ run_case() {
     log "  free before bind: '$(ss -ltn 2>/dev/null | grep -c ":${port} ")' and '$(ss -ltn 2>/dev/null | grep -c ":${stub_port} ")' listener(s)"
 
     mkdir -p "${base}/config" "${base}/lib" "${base}/dl"
+    log "  working dir ${base} on $(stat -f -c '%T' "$base")"
 
     local built entry
     built="$("$PY" "${ROOT}/tools/make_download_fixture.py" --out "${base}/dl" \
@@ -361,6 +368,19 @@ REQEOF
         log "  manual-import response: $(curl -s -X POST "${api}/library/manual-import" "${auth[@]}" -d "$req")"
     fi
 
+    # A MANUAL import creates no Download record at all, so there is no status to poll and
+    # polling /downloads for one reports "norow" for a row that succeeded. Its outcome is
+    # whether a file arrived in the root folder, which is checked below either way.
+    if [ "$mode" = "manual" ]; then
+        local mwaited=0
+        while [ "$mwaited" -lt 90 ]; do
+            [ -n "$(find "${base}/lib" -type f -name "*.${ext}" -print -quit 2>/dev/null)" ] && break
+            sleep 5; mwaited=$((mwaited + 5))
+        done
+        CASE_STATUS="noDownloadRow"
+        SETTLE_THIS=0
+    fi
+
     # Wait for a TERMINAL state rather than sleeping a flat interval. ImportBlocked is only
     # reached after the processing job exhausts its retries, so a short wait would report
     # "still importing" for a row that ends up blocked.
@@ -385,7 +405,10 @@ print(row.get('status') or row.get('statusText') or '?', str(reason).replace(' '
         esac
         sleep 6; waited=$((waited + 6))
     done
-    [ "$CASE_STATUS" = "nograb" ] || CASE_STATUS="${status:-unknown}"
+    case "$CASE_STATUS" in
+        nograb|noDownloadRow) ;;
+        *) CASE_STATUS="${status:-unknown}" ;;
+    esac
     CASE_BLOCK="${blocked:--}"
 
     # Did the library item actually become present? A status is a claim; a file in the root
@@ -398,6 +421,34 @@ print(row.get('status') or row.get('statusText') or '?', str(reason).replace(' '
     "$RUNTIME" logs "$container" >"$CASE_LOG" 2>&1
     log "  after ${waited}s: status=${CASE_STATUS} blockReason=${CASE_BLOCK} filesInLibrary=${placed}"
     log "  container log: ${CASE_LOG}"
+    log "  WRN/ERR lines in the whole container log: $(grep -c '\[WRN\]\|\[ERR\]' "$CASE_LOG")"
+
+    # The processing job keeps its OWN log entries, and that is where the import's reason is
+    # written. The container log gets nothing above Debug for a failed import, so a reporter
+    # reading only the log genuinely cannot see a cause. Capture both so the difference is on
+    # the record rather than inferred.
+    # `.log` rather than `.json` because this repository gitignores run logs and these name
+    # local paths.
+    local activity="${ROOT}/m890-${name}.jobactivity.log"
+    curl -s "${api}/download/processing/activity?count=5" "${auth[@]}" >"$activity"
+    log "  processing-job activity: ${activity}"
+    "$PY" -c "
+import json, sys
+with open(sys.argv[1]) as handle:
+    try:
+        payload = json.load(handle)
+    except Exception:
+        print('    | (no processing activity returned)'); raise SystemExit
+rows = payload if isinstance(payload, list) else (payload.get('items') or payload.get('jobs') or [])
+for row in rows[:3]:
+    print('    | job', row.get('id'), 'status', row.get('status'), 'retries', row.get('retryCount'))
+    print('    | errorMessage:', row.get('errorMessage'))
+    entries = row.get('processingLog') or row.get('logEntries') or row.get('log') or []
+    for entry in entries:
+        print('    |   log:', entry if isinstance(entry, str) else json.dumps(entry))
+    if not entries:
+        print('    |    (this job exposes no processingLog through the endpoint)')
+" "$activity" 2>/dev/null
 
     # The lines that actually say why, for a reporter to grep for on their own instance.
     grep -nE "Unable to import|No importable files|do not match|No audio files were registered|cannot be pinned|No successful audio import|Import(ing|ed)? |Blocked|Resolved [0-9]+ file|remaining after checking" \
@@ -464,6 +515,12 @@ if wanted mp4Only; then
     log "case mp4Only: a torrent whose only payload is a literal .mp4"
     run_case mp4Only mp4 single 1 auto local 0
     record mp4Only "single .mp4, local, auto" "$CASE_STATUS" "$CASE_BLOCK" "$CASE_LIBRARY" "$CASE_STAMP"
+fi
+
+if wanted mp4Manual; then
+    log "case mp4Manual: the SAME .mp4 through manual import — this is the asymmetry test"
+    run_case mp4Manual mp4 single 1 manual local 0
+    record mp4Manual "single .mp4, local, MANUAL" "$CASE_STATUS" "$CASE_BLOCK" "$CASE_LIBRARY" "$CASE_STAMP"
 fi
 
 if wanted m4bSingle; then

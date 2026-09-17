@@ -273,3 +273,6 @@ def test_the_attribution_runner_advertises_the_flag() -> None:
     runner = ROOT / "tools" / "validate_scan_attribution.sh"
     help_text = subprocess.run([str(runner), "--help"], capture_output=True, text=True).stdout
     assert "--folder-variant" in help_text
+    # The record-side flag is the other half of the same question, and is forwarded the same
+    # way, so it has to be advertised for the same reason.
+    assert "--record-author-suffix" in help_text

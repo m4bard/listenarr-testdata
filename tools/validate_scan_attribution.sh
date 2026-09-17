@@ -51,6 +51,7 @@ KEEP=0
 LABEL=""
 JSON_OUT=""
 USE_LIBRARY=""
+RECORD_AUTHOR_SUFFIX=""
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${ROOT}/.venv/bin/python"
 # Per-run, for the same reason CONTAINER is. Two concurrent runs used to share one library and
@@ -78,6 +79,14 @@ validate_scan_attribution.sh — show which files a scan attributes to one audio
                     the same list this forwards to rather than a copy of it. This is how a
                     tolerant folder matcher gets something to be tolerant of, and scoping it
                     to one ASIN leaves the sibling in ordinary form so an over-reach shows up.
+  --record-author-suffix TEXT
+                    append TEXT to every author in the RECORD that gets added, leaving the
+                    on-disk tree canonical. The mirror image of --folder-variant: that one
+                    moves the folder and keeps the record, this one moves the record and
+                    keeps the folder, and the two halves of an author tolerance are not the
+                    same code. The stored record is read back afterwards and the run aborts
+                    if the suffix did not survive, because a metadata lookup silently
+                    replacing the authors would otherwise look exactly like a clean result.
   --port N          host port (default: ${PORT})
   --seed N          generator seed (default: ${SEED})
   --label TEXT      label for the report header (default: the image ref)
@@ -99,6 +108,7 @@ while [[ $# -gt 0 ]]; do
         --label)     LABEL="$2";     shift 2 ;;
         --json)      JSON_OUT="$2";  shift 2 ;;
         --library)   USE_LIBRARY="$2"; shift 2 ;;
+        --record-author-suffix) RECORD_AUTHOR_SUFFIX="$2"; shift 2 ;;
         --keep)      KEEP=1;         shift ;;
         -h|--help)   usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -210,14 +220,16 @@ FOLDER_ID=$(curl -fsS -X POST "${API}/rootfolders" "${AUTH[@]}" \
 log INFO "root folder ${FOLDER_ID} -> /audiobooks"
 
 # --- 3. add exactly one book -----------------------------------------------------------
-export ROOT API API_KEY ASIN
+export ROOT API API_KEY ASIN RECORD_AUTHOR_SUFFIX
 BOOK_ID=$("$PYTHON" - <<'PY'
 import json, os, urllib.request
 books = json.load(open(os.path.join(os.environ["ROOT"], "corpus", "corpus.json")))["books"]
 book = next(b for b in books if b["asin"] == os.environ["ASIN"])
+suffix = os.environ.get("RECORD_AUTHOR_SUFFIX") or ""
+authors = [f"{a}{suffix}" for a in book["authors"]]
 payload = json.dumps({
     "metadata": {
-        "asin": book["asin"], "title": book["title"], "authors": book["authors"],
+        "asin": book["asin"], "title": book["title"], "authors": authors,
         "narrators": book["narrators"], "series": book["series"],
         "seriesNumber": book["series_position"],
         "publishYear": (book["release_date"] or "")[:4] or None,
@@ -241,6 +253,17 @@ log INFO "added ${ASIN} as audiobook ${BOOK_ID}"
 # FIRST and returns, so the library is never walked. Clearing it is the pre-match state, and
 # the only one in which the scan root falls back to the library root.
 "$RUNTIME" stop "$CONTAINER" >/dev/null 2>&1 || true
+# The control for --record-author-suffix. The add path is free to reconcile the posted
+# metadata against a provider lookup, and if it did, the record would hold the canonical
+# authors and the run would measure nothing while reporting a perfectly ordinary result.
+# Read the stored row back and refuse to continue unless the suffix is actually in it.
+if [[ -n "$RECORD_AUTHOR_SUFFIX" ]]; then
+    STORED_AUTHORS=$(sqlite3 "${CONFIG}/database/listenarr.db" \
+        "SELECT Authors FROM Audiobooks WHERE Id='${BOOK_ID}';")
+    [[ "$STORED_AUTHORS" == *"$RECORD_AUTHOR_SUFFIX"* ]] \
+        || die "the record did not keep '${RECORD_AUTHOR_SUFFIX}' (stored: ${STORED_AUTHORS}) — the add path replaced the posted authors, so this run would have measured nothing"
+    log INFO "record authors: ${STORED_AUTHORS}"
+fi
 sqlite3 "${CONFIG}/database/listenarr.db" "UPDATE Audiobooks SET BasePath = NULL;"
 "$RUNTIME" start "$CONTAINER" >/dev/null 2>&1 || die "could not restart"
 for _ in $(seq 1 120); do

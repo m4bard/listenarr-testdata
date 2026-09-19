@@ -264,8 +264,15 @@ def main() -> int:
     Handler.args = args
     server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     LOG.info("listening on :%d", args.port)
-    if not args.box_set:
-        LOG.info("no --box-set given; every search returns zero results")
+    if args.item:
+        LOG.info(
+            "%d catalogue item(s)%s; --box-set %s",
+            len(args.item),
+            " (reversed)" if args.reverse else "",
+            "also set" if args.box_set else "not set",
+        )
+    elif not args.box_set:
+        LOG.info("neither --item nor --box-set given; every search returns zero results")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

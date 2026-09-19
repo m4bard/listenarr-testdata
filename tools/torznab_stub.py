@@ -74,7 +74,14 @@ def info_hash_for(title: str) -> str:
     return hashlib.sha1(title.encode()).hexdigest()
 
 
-def build_item(title: str, size: int, seeders: int, narrator: str | None) -> str:
+def build_item(
+    title: str,
+    size: int,
+    seeders: int,
+    narrator: str | None,
+    fmt: str = "m4b",
+    describe: bool = False,
+) -> str:
     digest = info_hash_for(title)
     magnet = f"magnet:?xt=urn:btih:{digest}&amp;dn={escape(title).replace(' ', '+')}"
     attrs = [
@@ -82,14 +89,16 @@ def build_item(title: str, size: int, seeders: int, narrator: str | None) -> str
         f'    <torznab:attr name="seeders" value="{seeders}"/>',
         f'    <torznab:attr name="peers" value="{seeders + 2}"/>',
         f'    <torznab:attr name="magneturl" value="{magnet}"/>',
-        '    <torznab:attr name="format" value="m4b"/>',
+        f'    <torznab:attr name="format" value="{escape(fmt)}"/>',
     ]
     if narrator:
         # Not a real Torznab attribute. Present so a run can distinguish "the filter
         # dropped it" from "the app grabbed it twice" without standing up enrichment.
         attrs.append(f'    <torznab:attr name="narrator" value="{escape(narrator)}"/>')
+    description = f"    <description>{escape(title)}</description>\n" if describe else ""
     return f"""  <item>
     <title>{escape(title)}</title>
+{description}
     <guid isPermaLink="false">{digest}</guid>
     <link>{magnet}</link>
     <category>Audio/Audiobook</category>
@@ -127,6 +136,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if mode in ("search", "book", "bookssearch"):
             items = []
+            for spec in self.args.item or []:
+                spec_title, _, spec_fmt = spec.partition("|")
+                items.append(
+                    build_item(
+                        spec_title,
+                        self.args.size,
+                        self.args.seeders,
+                        self.args.audio_evidence,
+                        spec_fmt or "m4b",
+                        self.args.describe,
+                    )
+                )
+            if self.args.reverse:
+                items.reverse()
             if self.args.box_set:
                 # One release, named for the series rather than any single book. Every
                 # book in that series matches it.
@@ -139,6 +162,10 @@ class Handler(BaseHTTPRequestHandler):
                         self.args.audio_evidence,
                     )
                 )
+            if self.args.item:
+                LOG.info("served order: %s", " | ".join(
+                    (spec.partition("|")[0]) for spec in
+                    (reversed(self.args.item) if self.args.reverse else self.args.item)))
             LOG.info(
                 "search q=%r -> %d item(s)%s",
                 query,
@@ -191,6 +218,37 @@ def main() -> int:
             "add a narrator attribute, so the release reads as audio rather than a print "
             "box set. Needed only for a title carrying one of AudiobookOnlyFilter's box-set "
             "phrases; see the module docstring for the list and why most titles pass without it."
+        ),
+    )
+    parser.add_argument(
+        "--item",
+        action="append",
+        metavar="TITLE[|FORMAT]",
+        help=(
+            "serve this release, repeatable, in the order given. An optional |FORMAT "
+            "sets that item's torznab format attribute, which is what the response "
+            "parser maps to a quality label (320, 256, 192, 128 and m4b are the tokens "
+            "it recognises). Default m4b. Use several items sharing one FORMAT to make "
+            "a set that should tie, and one with a different FORMAT as the control that "
+            "has to rank differently."
+        ),
+    )
+    parser.add_argument(
+        "--reverse",
+        action="store_true",
+        help=(
+            "serve --item entries in reverse order. The point of the flag: if the "
+            "grabbed release changes when only the order changes, and the scores do "
+            "not, then return order decided the grab rather than the score."
+        ),
+    )
+    parser.add_argument(
+        "--describe",
+        action="store_true",
+        help=(
+            "emit a <description> equal to the title. The parser only derives a quality "
+            "from title text when a description element is present, so without this the "
+            "format attribute is the only thing that sets quality."
         ),
     )
     parser.add_argument("--size", type=int, default=850_000_000)

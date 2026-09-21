@@ -29,7 +29,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-from author_order_probe import MIN_MULTI, carries_role, classify, is_role_tail, report
+from author_order_probe import MIN_MULTI, carries_role, classify, report, strip_role
 
 # Verbatim from Audible's catalogue, captured 2026-09-21. Order is the catalogue's own.
 AUTHOR_FIRST = ["Fyodor Dostoevsky", "Constance Garnett - translator"]   # B002V9ZF3K
@@ -54,7 +54,32 @@ def test_a_dash_is_not_by_itself_a_role() -> None:
     assert not carries_role("Yang Jing - Yang Jing")
     assert not carries_role("Jonathan Maberry - editor/author")
     assert not carries_role("Fyodor Dostoevsky")
-    assert not is_role_tail("")
+    assert not carries_role("")
+
+
+def test_the_parenthesised_notation_is_seen_too() -> None:
+    """The gap this port closed.
+
+    The production rule has always read a trailing parenthetical; this probe did not, so a
+    sweep reported zero of them in a catalogue that contains them, and a report went out
+    implying the two detectors agreed. They are the same rule now and must stay that way.
+    """
+    assert carries_role("A. M. Sheridan Smith(Translated by)")
+    assert carries_role("Ned Asta (Illustrator)")
+
+    # The control: the vocabulary decides, not the brackets.
+    assert not carries_role("Hector Hugh Munro (Saki)")
+    assert not carries_role("Martin Luther King (Jr.)")
+
+
+def test_stripping_shortens_a_name_rather_than_emptying_it() -> None:
+    assert strip_role("Constance Garnett - translator") == "Constance Garnett"
+    assert strip_role("A. M. Sheridan Smith(Translated by)") == "A. M. Sheridan Smith"
+    assert strip_role("Fyodor Dostoevsky") == "Fyodor Dostoevsky"
+
+    # A credit that is nothing but a role comes back as it arrived: an empty author is worse
+    # than a strange one.
+    assert strip_role(" - translator") == "- translator"
 
 
 def test_classification_separates_the_three_positions() -> None:

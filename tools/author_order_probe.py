@@ -52,28 +52,45 @@ SEARCH = "https://api.audible.com/1.0/catalog/products?"
 AUDNEX = "https://api.audnex.us/books/{asin}"
 USER_AGENT = "listenarr-testdata/1.0"
 
-# Observed in Audible's own catalogue rather than guessed. The tail after a dash is a role
-# only when every token in it is role vocabulary or a connector: "Yang Jing" and
-# "author/editor" both sit after a dash and neither is a contributor credit.
-ROLE_WORDS = (
-    r"(translator|traducteur|traductrice|traduttore|tradutor|tradu[cç][aã]o|translated|"
-    r"translation|übersetzer|editor|éditeur|edited|foreword|afterword|postface|"
-    r"introduction|introductions|preface|pr[ée]face|avant-propos|illustrator|adapter|"
-    r"adaptateur|adaptation|adapted|contributor|compiler|annotation|annotator|prologue|"
-    r"producer|essay|archives|notes)"
+# This vocabulary is a PORT of the production detector in
+# listenarr.domain/Common/AuthorCredits.cs, and that file is authoritative. This one exists to
+# measure the catalogue, which the C# cannot do, and the two disagreeing is a defect: an earlier
+# version of this probe checked only the dash form while the production rule also read a trailing
+# parenthetical, so a whole notation was measured as absent when it was merely unexamined. Change
+# one, change the other, and say in the commit that you did.
+#
+# The split matches the C# one. An agent noun names a person and can only be a credit. A
+# participle or an abstract noun describes an activity, and Audible uses those in brackets to
+# describe the work as well ("Lewis Carroll (Illustrated)"). Production removes the role rather
+# than the credit, so that ambiguity costs a shortened name and not a deleted person.
+AGENT_ROLE_WORDS = (
+    "translator|traducteur|traductrice|traduttore|tradutor|tradutora|traductor|traductora|"
+    "ubersetzer|übersetzer|editor|editora|editeur|éditeur|illustrator|adapter|adaptateur|"
+    "annotator|compiler|contributor"
 )
-# Post-nominals and connectors are treated as part of a role tail on purpose, so that
-# "Theodore C. Van Alst - editor Jr." still classifies. It is a deliberate lenience rather
-# than an oversight: do not "fix" it without checking what it stops matching.
-CONNECTORS = frozenset({"by", "and", "or", "-", "jr.", "sr.", "phd", "ph.d.", "m.d.", "series"})
+WORK_ROLE_WORDS = (
+    "translated|translation|traducao|tradução|traduccion|traducción|edited|adapted|adaptado|"
+    "adaptation|illustrated|annotation|introduction|introductions|introduccion|introducción|"
+    "foreword|afterword|preface|préface|prefacio|postface|avant-propos|prologue|prologo|"
+    "prólogo|essay|notes"
+)
+ROLE_WORDS = f"(?:{AGENT_ROLE_WORDS})s?|{WORK_ROLE_WORDS}"
 
-# Below this many multi-contributor products a capture cannot distinguish "the catalogue
-# always credits the author first" from "this sample happens not to contain the case".
+# Joiners, and the post-nominals Audible strands after a role ("editor Jr."). A tail of these
+# alone is a name rather than a credit, which is why a role word is required as well.
+FILLER = r"by|and|or|jr\.?|sr\.?|ph\.?d\.?|m\.?d\.?|series"
+
+# Separators inside a tail are mandatory whitespace, so there is exactly one way to split one.
+_TAIL = f"(?:(?:{FILLER})\\s+)*(?:{ROLE_WORDS})(?:\\s+(?:{ROLE_WORDS}|{FILLER}))*"
+
+# The class matches a hyphen, an en dash or an em dash; Audible uses all three.
+DASH_TAIL = re.compile(f"\\s[-\u2013\u2014]\\s*(?:{_TAIL})$", re.IGNORECASE)
+PAREN_TAIL = re.compile(f"\\s*\\(\\s*(?:{_TAIL})\\s*\\)\\s*$", re.IGNORECASE)
+
+# Below this many multi-contributor products a capture cannot distinguish "the catalogue always
+# credits the author first" from "this sample happens not to contain the case".
 MIN_MULTI = 30
-# The class matches a hyphen or an en dash; Audible uses both.
-DASH_TAIL = re.compile("\\s[-\u2013]\\s*(.+)$")
 
-# Keyword seeds for the sweep. Translated and edited works are where multiple credits live,
 # so the sample is aimed at them rather than at the catalogue at large.
 SWEEP_KEYWORDS = (
     "translated by", "translator", "a new translation", "edited by", "editor",
@@ -97,20 +114,24 @@ class Unreachable(Exception):
     """The catalogue could not be reached, which is not the same as an empty answer."""
 
 
-def is_role_tail(tail: str) -> bool:
-    """True when every token after the dash is role vocabulary or a connector."""
-    tokens = [token for token in re.split(r"[\s/]+", tail.strip().lower()) if token]
-    if not tokens:
-        return False
-    return all(
-        token in CONNECTORS or re.fullmatch(ROLE_WORDS, token) is not None for token in tokens
-    )
-
-
 def carries_role(name: str) -> bool:
-    """True when the credited name has a contributor role baked into it."""
-    match = DASH_TAIL.search(name or "")
-    return match is not None and is_role_tail(match.group(1))
+    """True when the credited name has a contributor role on the end of it.
+
+    Both notations are checked, which is the point of the port: measuring only the dash form is
+    what made an earlier run report zero parenthetical credits in a catalogue that has them.
+    """
+    trimmed = (name or "").strip()
+    if not trimmed:
+        return False
+    return bool(PAREN_TAIL.search(trimmed) or DASH_TAIL.search(trimmed))
+
+
+def strip_role(name: str) -> str:
+    """The name with its trailing role removed, or unchanged when that would leave nothing."""
+    trimmed = (name or "").strip()
+    stripped = PAREN_TAIL.sub("", trimmed)
+    stripped = DASH_TAIL.sub("", stripped).strip().rstrip(",-\u2013\u2014( ").strip()
+    return stripped or trimmed
 
 
 def fetch(url: str, attempts: int = 3) -> dict[str, Any] | None:

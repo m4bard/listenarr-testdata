@@ -23,8 +23,17 @@ answer as though it were the one you started. Every result you then collect is a
 **Never bind the default port.** That belongs to the running install. Pick something well away
 from it.
 
-**Prove your port is free before you bind it.** `ss -ltn | grep ":<port> "` must return nothing. Do
-not assume a port is free because you have not used it.
+**Prove your port is free before you bind it.** Do not assume a port is free because you have not
+used it, and ask both `ss -ltn` and `podman ps -a`: a container that was created and never started
+holds its published port in podman alone, so ss will call that port free right up until the bind
+fails.
+
+Do not write the check as `ss -ltn | grep -q ":<port> "`. That idiom was in `probe.sh` and it never
+once detected a busy port. `grep -q` exits at the first match, `ss` takes SIGPIPE, `pipefail` makes
+the pipeline non-zero, and the `&& continue` that was meant to skip the busy port never fires. The
+symptom is a container that will not start with "address already in use", which reads as a podman
+problem rather than as the free-port check being inert. Collect the busy ports into a variable first
+and match on that, with no pipe in the test.
 
 **A port answering is evidence of nothing** until you have matched it to the container you started:
 

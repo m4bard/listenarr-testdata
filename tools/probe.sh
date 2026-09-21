@@ -9,7 +9,7 @@
 # networking, refuses the default port, proves its own port free before binding, and matches the
 # port back to the container it started before telling you it is up.
 #
-#   tools/probe.sh up [--image REF] [--name NAME]   start one, print how to talk to it
+#   tools/probe.sh up [--image REF] [--name NAME] [--port N]  start one, print how to talk to it
 #   tools/probe.sh api <name> <method> <path> [json]  call it, antiforgery handled for you
 #   tools/probe.sh local <name> <path>              call it from TRUE loopback, inside
 #   tools/probe.sh config <name>                    dump its config.json
@@ -24,26 +24,59 @@ STATE_DIR="${TMPDIR:-/tmp}/listenarr-probe"
 
 die() { echo "probe: $*" >&2; exit 1; }
 
+# Collect the ports already spoken for, once, as a space-delimited list.
+#
+# This deliberately avoids `ss ... | grep -q`, which silently reported every port free. grep -q
+# exits the moment it matches, ss takes SIGPIPE, and `pipefail` turns the whole pipeline non-zero,
+# so the `&& continue` that was meant to skip a busy port never fired. The failure mode was a
+# container that would not start with "address already in use", which reads as a podman problem
+# rather than as the free-port check having never worked.
+#
+# Rootless podman publishes into this user's netns, so ss sees those mappings, but a container
+# that is created and not running holds its published port in `podman port` alone. Ask both.
+busy_ports() {
+    local from_ss from_podman
+    from_ss=$(ss -ltn 2>/dev/null | awk 'NR > 1 { n = split($4, a, ":"); print a[n] }' || true)
+    from_podman=$(podman ps -a --format '{{.Ports}}' 2>/dev/null \
+        | tr ' ,' '\n\n' \
+        | awk -F'->' 'NF == 2 { n = split($1, a, ":"); print a[n] }' || true)
+    printf '%s %s' "$from_ss" "$from_podman" | tr '\n' ' '
+}
+
 pick_port() {
+    local wanted="${1:-}" busy
+    busy=" $(busy_ports) "
+
+    if [ -n "$wanted" ]; then
+        [ "$wanted" = "$PRODUCTION_PORT" ] && die "refusing to bind the production port"
+        case "$busy" in
+            *" $wanted "*) die "port $wanted is already in use" ;;
+        esac
+        echo "$wanted"; return 0
+    fi
+
     for p in $(seq 18900 18999); do
         [ "$p" = "$PRODUCTION_PORT" ] && continue
-        ss -ltn 2>/dev/null | grep -q ":$p " && continue
+        case "$busy" in
+            *" $p "*) continue ;;
+        esac
         echo "$p"; return 0
     done
     die "no free port in 18900-18999"
 }
 
 cmd_up() {
-    local image="$DEFAULT_IMAGE" name="probe-$$"
+    local image="$DEFAULT_IMAGE" name="probe-$$" wanted=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --image) image="${2:?}"; shift 2 ;;
             --name)  name="${2:?}";  shift 2 ;;
+            --port)  wanted="${2:?}"; shift 2 ;;
             *) die "unknown option $1" ;;
         esac
     done
 
-    local port; port=$(pick_port)
+    local port; port=$(pick_port "$wanted")
     [ "$port" = "$PRODUCTION_PORT" ] && die "refusing to bind the production port"
 
     local cfg="$STATE_DIR/$name/config"

@@ -27,6 +27,16 @@ the time, so the add that put the torrent there is the control for the delete th
 A deleted info-hash stops being served from /torrents/info, which gives a second and
 independent observable: the queue a client reports actually shrinks.
 
+That second observable is worthless unless the torrent served here is the same object the
+application grabbed, which is what `--hash` is for. Hashes are derived from the torrent index by
+default, so they cannot agree with the info-hash the torznab stub puts in its magnet, which is
+sha1 of the release title. Measure a removal with the two disagreeing and the torrent is still
+served afterwards no matter what the delete did, so the harness manufactures the very defect the
+run was looking for. `--hash` pins the first torrent to a chosen info-hash, and `--name` renames
+it to match so a queue dump reads as a release rather than an index. Pass the value the magnet
+carries and the agreement becomes a property of the setup rather than something to be argued
+about after the fact.
+
 The point of the whole thing is `--malformed-index`. qBittorrent's `downloaded` field is
 documented as an integer and normally is one, so a client that reads it with a throwing
 accessor looks correct until something upstream emits it in another JSON token form. This
@@ -54,6 +64,8 @@ Writes nothing and reads nothing. Serves from memory and exits on SIGTERM.
 
     ./tools/qbittorrent_stub.py --port 8111 --count 6
     ./tools/qbittorrent_stub.py --port 8111 --count 6 --malformed-index 3
+    ./tools/qbittorrent_stub.py --port 8111 --count 1 --journal /tmp/qb.jsonl \
+        --hash "$(printf %s "$TITLE" | sha1sum | cut -d" " -f1)" --name "$TITLE"
 """
 
 from __future__ import annotations
@@ -63,6 +75,7 @@ import hashlib
 import json
 import logging
 import re
+import string
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -76,12 +89,27 @@ LOG = logging.getLogger("qbstub")
 HASH_LENGTH = 40
 
 
-def build_torrent(index: int, state: str, progress: float) -> dict[str, Any]:
-    """One well-formed torrent, with every field Listenarr asks for in its `fields=` list."""
+def build_torrent(
+    index: int,
+    state: str,
+    progress: float,
+    pin_hash: str | None = None,
+    pin_name: str | None = None,
+) -> dict[str, Any]:
+    """One well-formed torrent, with every field Listenarr asks for in its `fields=` list.
+
+    `pin_hash` and `pin_name` apply to the first torrent only. One pinned torrent is enough to
+    stand for a single grab, and leaving the others index-derived keeps them distinct from it,
+    so a run that pins one release still has unrelated torrents either side of it as controls.
+    """
     digest = hashlib.sha1(f"listenarr-testdata-stub-{index}".encode()).hexdigest()
+    if index == 1 and pin_hash:
+        # Lowercased because Listenarr stores the hash uppercased and lowercases it again for a
+        # `hashes=` filter. Serving one canonical case keeps every comparison against it direct.
+        digest = pin_hash.lower()
     return {
         "hash": digest[:HASH_LENGTH],
-        "name": f"Stub Torrent {index:03d}",
+        "name": pin_name if (index == 1 and pin_name) else f"Stub Torrent {index:03d}",
         "progress": progress,
         "size": 100_000_000 + index,
         "downloaded": 100_000_000 + index,
@@ -176,7 +204,7 @@ class StubState:
         with self.lock:
             dropped = set(self.deleted_hashes)
         torrents = [
-            build_torrent(i, self.args.state, self.args.progress)
+            build_torrent(i, self.args.state, self.args.progress, self.args.hash, self.args.name)
             for i in range(1, self.args.count + 1)
         ]
         # Corrupt before filtering, so --malformed-index keeps meaning the position in the
@@ -293,7 +321,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if raw.strip().lower() == "all":
             requested = {
-                build_torrent(i, self.state.args.state, self.state.args.progress)["hash"]
+                build_torrent(
+                    i,
+                    self.state.args.state,
+                    self.state.args.progress,
+                    self.state.args.hash,
+                    self.state.args.name,
+                )["hash"]
                 for i in range(1, self.state.args.count + 1)
             }
         else:
@@ -431,6 +465,23 @@ def main() -> int:
             "control that the channel was open."
         ),
     )
+    parser.add_argument(
+        "--hash",
+        default=None,
+        metavar="INFOHASH",
+        help=(
+            "serve the first torrent under this 40 hexadecimal character info-hash instead of "
+            "one derived from its index. Pass the hash the release's magnet carries, so that "
+            "'the torrent is gone from the client' is a statement about the torrent the "
+            "application actually grabbed."
+        ),
+    )
+    parser.add_argument(
+        "--name",
+        default=None,
+        metavar="TITLE",
+        help="name the first torrent, so a queue dump names a release rather than an index",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -442,6 +493,15 @@ def main() -> int:
 
     if args.malformed_index and not 1 <= args.malformed_index <= args.count:
         parser.error(f"--malformed-index must be between 1 and --count ({args.count})")
+
+    # Refused at startup rather than served, because a mistyped hash yields a stub that answers
+    # every request successfully and matches nothing, which on the other end looks exactly like
+    # the application failing to remove a torrent.
+    if args.hash is not None:
+        if len(args.hash) != HASH_LENGTH or any(c not in string.hexdigits for c in args.hash):
+            parser.error(f"--hash must be {HASH_LENGTH} hexadecimal characters")
+        if args.count < 1:
+            parser.error("--hash pins the first torrent, so --count must be at least 1")
 
     Handler.state = StubState(args)
     server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)

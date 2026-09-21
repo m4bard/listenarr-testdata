@@ -15,6 +15,17 @@ Only the routes Listenarr's qBittorrent adapter actually calls are implemented:
     POST /api/v2/torrents/add      accepts a torrent; with --conflict-on-duplicate it answers
                                    409 the second time the same info-hash is submitted, which
                                    is what qBittorrent 5.2 does for a torrent it already holds
+    POST /api/v2/torrents/delete   removes torrents by info-hash, honouring `deleteFiles`
+    POST /api/v2/torrents/pause    (and /stop, /resume, /start) accepted and recorded
+
+`--journal PATH` is what makes a NEGATIVE result readable. Every request the stub receives is
+appended there as one JSON object per line, flushed immediately, so afterwards you can assert
+that a particular call never arrived rather than inferring it from the absence of a log line.
+An absence is only evidence when something in the same journal proves the channel was open at
+the time, so the add that put the torrent there is the control for the delete that did not.
+
+A deleted info-hash stops being served from /torrents/info, which gives a second and
+independent observable: the queue a client reports actually shrinks.
 
 The point of the whole thing is `--malformed-index`. qBittorrent's `downloaded` field is
 documented as an integer and normally is one, so a client that reads it with a throwing
@@ -56,7 +67,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import unquote_to_bytes, urlparse
+from urllib.parse import parse_qs, unquote_to_bytes, urlparse
 
 LOG = logging.getLogger("qbstub")
 
@@ -141,24 +152,59 @@ class StubState:
         # across the session, which is exactly why a second submission of the same
         # release is rejected rather than silently re-added.
         self.added_hashes: set[str] = set()
+        # Info-hashes a caller has asked the client to drop, and the calls that asked.
+        # Kept separately from added_hashes because the question being measured is
+        # whether the call ever arrives, which is not the same as what it removed.
+        self.deleted_hashes: set[str] = set()
+        self.delete_calls: list[dict[str, Any]] = []
+        self.journal_path: str | None = getattr(args, "journal", None)
+
+    def record(self, entry: dict[str, Any]) -> None:
+        """Append one request to the journal, flushed, so a crash still leaves the record.
+
+        Buffering here would be a quiet way to lose the last few requests, which are
+        exactly the ones a test is about to assert on.
+        """
+        if not self.journal_path:
+            return
+        line = json.dumps(entry, sort_keys=True)
+        with self.lock, open(self.journal_path, "a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+            handle.flush()
 
     def torrents_json(self) -> str:
+        with self.lock:
+            dropped = set(self.deleted_hashes)
         torrents = [
             build_torrent(i, self.args.state, self.args.progress)
             for i in range(1, self.args.count + 1)
         ]
+        # Corrupt before filtering, so --malformed-index keeps meaning the position in the
+        # generated set rather than a position that shifts as torrents are deleted.
         if self.args.malformed_index:
             position = self.args.malformed_index - 1
             corrupt(torrents[position], self.args.malformed_field, self.args.malformed_kind)
             LOG.info(
-                "serving %d torrents; #%d has a %s %r",
+                "generated %d torrents; #%d has a %s %r",
                 len(torrents),
                 self.args.malformed_index,
                 self.args.malformed_kind,
                 self.args.malformed_field,
             )
+
+        generated = len(torrents)
+        if dropped:
+            torrents = [t for t in torrents if t["hash"] not in dropped]
+
+        if generated == len(torrents):
+            LOG.info("serving %d torrents, none deleted", generated)
         else:
-            LOG.info("serving %d torrents, all well formed", len(torrents))
+            LOG.info(
+                "serving %d of %d torrents; %d removed by a delete call",
+                len(torrents),
+                generated,
+                generated - len(torrents),
+            )
         return json.dumps(torrents)
 
 
@@ -190,10 +236,30 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    # Removal has gone by several names across qBittorrent's API versions, and a client
+    # that pauses before deleting would otherwise show up as a 404 that reads like a
+    # network fault. Each is accepted and recorded so the journal shows the attempt.
+    LIFECYCLE_PATHS = (
+        "/api/v2/torrents/pause",
+        "/api/v2/torrents/stop",
+        "/api/v2/torrents/resume",
+        "/api/v2/torrents/start",
+    )
+
+    def _journal(self, method: str, path: str, body: bytes) -> None:
+        parsed = urlparse(self.path)
+        self.state.record({
+            "method": method,
+            "path": path,
+            "query": parsed.query,
+            "body": body.decode("utf-8", "replace")[:2000],
+        })
+
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
+        self._journal("POST", path, body)
         if path == "/api/v2/auth/login":
             LOG.info("login accepted")
             self._send("Ok.", "text/plain", cookie=True)
@@ -201,7 +267,65 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v2/torrents/add":
             self._handle_add(body)
             return
+        if path == "/api/v2/torrents/delete":
+            self._handle_delete(body)
+            return
+        if path in self.LIFECYCLE_PATHS:
+            action = path.rsplit("/", 1)[-1]
+            LOG.info("%s received: %s", action, body.decode("utf-8", "replace")[:200])
+            self._send("Ok.", "text/plain")
+            return
+        LOG.info("unhandled POST %s", path)
         self.send_error(404)
+
+    def _handle_delete(self, body: bytes) -> None:
+        """Drop torrents by info-hash, the way qBittorrent's /torrents/delete does.
+
+        The call is form-encoded: `hashes` is pipe-delimited, or the literal `all`, and
+        `deleteFiles` says whether the payload goes too. Both are recorded, because
+        "removed from the client but left the files on disk" is a different outcome from
+        "removed and cleaned up", and a test that only counted calls could not tell them
+        apart.
+        """
+        fields = parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
+        raw = (fields.get("hashes") or [""])[0]
+        delete_files = (fields.get("deleteFiles") or ["false"])[0].lower() in ("true", "1")
+
+        if raw.strip().lower() == "all":
+            requested = {
+                build_torrent(i, self.state.args.state, self.state.args.progress)["hash"]
+                for i in range(1, self.state.args.count + 1)
+            }
+        else:
+            requested = {h.strip().lower() for h in raw.split("|") if h.strip()}
+
+        with self.state.lock:
+            self.state.deleted_hashes |= requested
+            self.state.delete_calls.append(
+                {"hashes": sorted(requested), "deleteFiles": delete_files}
+            )
+            total = len(self.state.delete_calls)
+
+        LOG.info(
+            "DELETE call #%d: %d hash(es) %s, deleteFiles=%s",
+            total,
+            len(requested),
+            sorted(requested) or "<none given>",
+            delete_files,
+        )
+
+        # --refuse-delete is what separates "the caller never asked" from "the caller asked and
+        # was told no". Both leave the torrent running, and an application that cannot tell them
+        # apart will report a removal it did not perform. The refusal is recorded above BEFORE
+        # this branch, so the journal still proves the call arrived.
+        if self.state.args.refuse_delete:
+            with self.state.lock:
+                self.state.deleted_hashes -= requested
+            LOG.info("REFUSING the delete with 500; the torrents stay in the queue")
+            self._send_status(500, "Unable to delete torrents.")
+            return
+
+        self._send("Ok.", "text/plain")
 
     def _handle_add(self, body: bytes) -> None:
         """Accept a torrent, and optionally reject a repeat of one already held.
@@ -231,6 +355,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
+        self._journal("GET", path, b"")
         if path == "/api/v2/app/version":
             self._send("v5.0.2", "text/plain")
         elif path == "/api/v2/app/webapiVersion":
@@ -287,6 +412,24 @@ def main() -> int:
     )
     parser.add_argument(
         "--progress", type=float, default=1.0, help="progress fraction for every torrent"
+    )
+    parser.add_argument(
+        "--refuse-delete",
+        action="store_true",
+        help=(
+            "answer /torrents/delete with 500 and keep the torrent. The call is still "
+            "journaled, so this distinguishes a removal that was never attempted from one "
+            "that was attempted and failed."
+        ),
+    )
+    parser.add_argument(
+        "--journal",
+        default=None,
+        help=(
+            "append every request to this file as JSON lines. This is what lets a test assert "
+            "that a call never arrived, with the calls that did arrive alongside it as the "
+            "control that the channel was open."
+        ),
     )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()

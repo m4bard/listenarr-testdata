@@ -12,14 +12,21 @@ This probe asks whether that holds, because the answer decides whether the rule 
     author_order_probe.py sweep   --out sweep.json     # a broad catalogue-search sample
     author_order_probe.py report  sweep.json           # classify an existing capture
 
-``corpus`` and ``sweep`` exit 1 when any multi-contributor product credits a role-suffixed
-name at index 0, which is the condition that makes "keep the first" drop a real author.
+Exit 1 means a multi-contributor product credits a role-suffixed name at index 0, which is the
+condition that makes "keep the first" drop a real author. Exit 0 means none did. Exit 2 means
+the capture cannot answer the question and must not be read as either.
 
 The classification is deliberately three-way rather than two-way. A run that found only
 role-suffixed-first products would look the same whether the catalogue really is ordered
 that way or the role detector simply matches everything, so the control that must come out
 differently is the count of multi-contributor products where the role suffix appears only
 later, plus those carrying no role suffix at all. Both are reported on every run.
+
+A small capture is the other way to get a false all-clear, and it is the likelier one. The
+committed public corpus holds three multi-contributor records and reports zero role-first
+products, which reads as a green light and is not one: the wider catalogue sample finds the
+case easily. So a capture with fewer than MIN_MULTI multi-contributor products refuses to
+answer rather than reporting a clean result.
 """
 
 from __future__ import annotations
@@ -55,7 +62,14 @@ ROLE_WORDS = (
     r"adaptateur|adaptation|adapted|contributor|compiler|annotation|annotator|prologue|"
     r"producer|essay|archives|notes)"
 )
+# Post-nominals and connectors are treated as part of a role tail on purpose, so that
+# "Theodore C. Van Alst - editor Jr." still classifies. It is a deliberate lenience rather
+# than an oversight: do not "fix" it without checking what it stops matching.
 CONNECTORS = frozenset({"by", "and", "or", "-", "jr.", "sr.", "phd", "ph.d.", "m.d.", "series"})
+
+# Below this many multi-contributor products a capture cannot distinguish "the catalogue
+# always credits the author first" from "this sample happens not to contain the case".
+MIN_MULTI = 30
 # The class matches a hyphen or an en dash; Audible uses both.
 DASH_TAIL = re.compile("\\s[-\u2013]\\s*(.+)$")
 
@@ -195,7 +209,7 @@ def report(captured: dict[str, list[str]]) -> int:
     print(f"multi-contributor products    : {multi}")
     print(f"  role suffix at index 0      : {len(buckets['role_first'])}   <- breaks 'keep first'")
     print(f"  role suffix only later      : {len(buckets['role_later'])}   <- control")
-    print(f"  no role suffix anywhere     : {len(buckets['no_role'])}   <- control")
+    print(f"  no dash-role detected       : {len(buckets['no_role'])}   <- control")
     print(f"every credit role-suffixed    : {len(buckets['all_role'])}   <- breaks 'drop suffixed'")
 
     losses = [
@@ -214,13 +228,29 @@ def report(captured: dict[str, list[str]]) -> int:
         for asin, names in sorted(buckets["all_role"])[:20]:
             print(f"  {asin}  {names}")
 
+    # Order matters. A capture with no control cannot support the finding either, because a
+    # detector matching every name produces exactly that capture, so it refuses first. Size
+    # only ever gates the all-clear: one role-suffixed first credit proves the case exists
+    # however thin the sample, and refusing to say so would discard the one thing a small
+    # capture can establish.
     if not buckets["role_later"] and not buckets["no_role"]:
         print()
         print("NO CONTROL: nothing in this capture credits a primary author first, so a role "
               "detector that matched every name would look identical to this result.",
               file=sys.stderr)
         return 2
-    return 1 if buckets["role_first"] else 0
+
+    if buckets["role_first"]:
+        return 1
+
+    if multi < MIN_MULTI:
+        print()
+        print(f"CAPTURE TOO SMALL: {multi} multi-contributor products, fewer than {MIN_MULTI}. "
+              "Finding none role-suffixed first says nothing at this size. Widen the sample "
+              "before reading this as a clean result.", file=sys.stderr)
+        return 2
+
+    return 0
 
 
 def load_asins(path: pathlib.Path) -> list[str]:

@@ -13,6 +13,9 @@ wrongly are what these tests pin:
 * a verdict with no control at all - a capture holding only role-suffixed-first products
                                      cannot distinguish those two failures, so it must refuse
                                      to answer rather than report the finding
+* a clean answer off a tiny sample  - three multi-contributor records that happen not to
+                                     contain the case look exactly like a catalogue that never
+                                     produces it, and the public corpus is exactly that size
 
 The exit code carries the verdict, because that is what a caller checks. 0 is "no role suffix
 was ever first in this capture", 1 is "one was", and 2 is "this capture cannot tell you".
@@ -26,7 +29,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-from author_order_probe import carries_role, classify, is_role_tail, report
+from author_order_probe import MIN_MULTI, carries_role, classify, is_role_tail, report
 
 # Verbatim from Audible's catalogue, captured 2026-09-21. Order is the catalogue's own.
 AUTHOR_FIRST = ["Fyodor Dostoevsky", "Constance Garnett - translator"]   # B002V9ZF3K
@@ -70,7 +73,30 @@ def test_a_capture_with_a_role_first_reports_unsafe() -> None:
 
 
 def test_a_capture_with_none_first_reports_safe() -> None:
-    assert report({"b": AUTHOR_FIRST, "c": NO_ROLE}) == 0
+    capture = {f"ok{i}": AUTHOR_FIRST for i in range(MIN_MULTI)}
+    capture["clean"] = NO_ROLE
+    assert report(capture) == 0
+
+
+def test_a_small_capture_refuses_rather_than_reporting_clean() -> None:
+    """The failure the public corpus actually produces.
+
+    Three multi-contributor records with no role-suffixed first credit is what the committed
+    corpus gives, and reading that as "the catalogue always credits the author first" is
+    wrong: the wider sample finds the case without difficulty. Too little data and no data
+    are different failures, and both have to refuse.
+    """
+    assert report({"b": AUTHOR_FIRST, "c": NO_ROLE}) == 2
+
+
+def test_a_small_capture_still_reports_a_finding_it_did_see() -> None:
+    """Size gates the all-clear, never the finding.
+
+    One product crediting a role-suffixed name first is proof the case exists, however small
+    the capture. Refusing to report it because the sample is thin would lose the one thing a
+    small sample can establish.
+    """
+    assert report({"a": ROLE_FIRST, "b": AUTHOR_FIRST, "c": NO_ROLE}) == 1
 
 
 def test_a_capture_with_no_control_refuses_to_answer() -> None:

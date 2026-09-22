@@ -22,8 +22,10 @@ import json
 import pathlib
 import sys
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -95,7 +97,10 @@ class RecordingTransport:
             return Response(200, {}, list(self.library))
 
         if bare == "/authors/monitoring/status":
-            name = path.split("name=")[1].split("&")[0].replace("+", " ").replace("%20", " ")
+            # Decoded the way a server decodes it, with strict parsing, so a client that stopped
+            # encoding its query would break here instead of being quietly understood.
+            query = parse_qs(urlsplit(path).query, strict_parsing=True)
+            name = query["name"][0]
             author_id = self.monitored.get(name)
             if author_id is None:
                 return Response(200, {}, {"isMonitored": False, "monitoredAuthor": None})
@@ -115,6 +120,11 @@ class RecordingTransport:
             if not queue:
                 raise AssertionError(f"an unscripted status poll for run {run_id}")
             return queue.pop(0) if len(queue) > 1 else queue[0]
+
+        if bare.startswith("/configuration"):
+            # Answered rather than raised, so the test that asserts this tool never reads or
+            # writes a setting has something it could actually catch.
+            return Response(200, {}, {})
 
         raise AssertionError(f"an unexpected call: {method} {path}")
 
@@ -599,12 +609,16 @@ class TestProductionPortGuard:
             self.args("http://somewhere:4545")
         assert exit_info.value.code == 2
 
-    def test_it_refuses_the_production_port_in_list_only_mode_too(self) -> None:
+    def test_it_refuses_the_production_port_in_both_modes(self) -> None:
         # Reading is still talking to it, and a tool that will read production is one flag away
-        # from writing to it.
-        with pytest.raises(SystemExit) as exit_info:
+        # from writing to it. Both modes are checked in one test because the guard runs before
+        # the mode is looked at, and a pair of identical tests would only look like a control.
+        with pytest.raises(SystemExit) as list_only:
             self.args("http://somewhere:4545")
-        assert exit_info.value.code == 2
+        with pytest.raises(SystemExit) as refreshing:
+            self.args("http://somewhere:4545", "--refresh")
+        assert list_only.value.code == 2
+        assert refreshing.value.code == 2
 
     def test_the_control_any_other_port_is_accepted(self) -> None:
         # Without this the refusal could be a parser that rejects every URL.
@@ -698,3 +712,232 @@ class TestRealTransport:
         assert [call for call in seen if call[0] == "POST"] == [
             ("POST", "/api/v1/library/refresh-metadata", "csrf-token-value")
         ]
+
+
+class TestCompoundRequests:
+    """A genre copied out of the interface as one compound string has to be expressible."""
+
+    def test_a_compound_request_matches_the_compound_tag(self) -> None:
+        # Before the request was split the same way the stored side is, this matched nothing:
+        # the request stayed one token run that no split stored genre could contain, and the
+        # tool reported a library with none of that genre.
+        assert genre_matches(["Science Fiction & Fantasy"], ["Science Fiction & Fantasy"],
+                             MATCH_PHRASE)
+        assert genre_matches(["Mystery, Thriller & Suspense"],
+                             ["Mystery", "Thriller", "Suspense"], MATCH_PHRASE)
+
+    def test_a_compound_request_is_an_and(self) -> None:
+        # The control that fixes the meaning: if the parts were ORed, this would select every
+        # fantasy book from a request that named science fiction first.
+        assert not genre_matches(["Science Fiction & Fantasy"], ["Fantasy"], MATCH_PHRASE)
+        assert not genre_matches(["Science Fiction & Fantasy"], ["Science Fiction"], MATCH_PHRASE)
+
+    def test_the_parts_asked_for_separately_are_an_or(self) -> None:
+        matched = genre_matches(["science fiction", "fantasy"], ["Fantasy"], MATCH_PHRASE)
+        assert matched == ["fantasy"]
+
+    def test_accents_fold_so_one_providers_spelling_matches_anothers(self) -> None:
+        assert genre_matches(["ciencia ficcion"], ["Ciencia Ficción"], MATCH_EXACT)
+        # The control: folding accents must not fold two different genres together.
+        assert not genre_matches(["ciencia ficcion"], ["Novela Negra"], MATCH_EXACT)
+
+    def test_a_non_latin_genre_survives_normalisation(self) -> None:
+        # It used to normalise to the empty string, which made the book invisible with no
+        # warning. The control is that it still does not match something else.
+        assert genre_matches(["Научная фантастика"],
+                             ["Научная фантастика"], MATCH_EXACT)
+        assert not genre_matches(["Научная фантастика"],
+                                 ["Romance"], MATCH_EXACT)
+
+    def test_one_author_named_twice_on_a_book_counts_once(self) -> None:
+        library = [{"id": 1, "authors": ["Ada Wren", "ada wren"], "genres": ["Cyberpunk"],
+                    "seriesMemberships": []}]
+
+        selected = select_authors(library, [CYBERPUNK], MATCH_PHRASE)
+
+        assert len(selected) == 1
+        assert selected[0].book_ids == [1]
+        assert selected[0].matching_book_ids == [1]
+
+
+class TestUnsettledBooks:
+    """Completed means the run reached the end of the list, not that every book answered."""
+
+    def build(self, transport: RecordingTransport, clock: Clock) -> Sequencer:
+        return Sequencer(ListenarrApi(transport), 5.0, 600.0, 5, clock.sleep, clock, quiet)
+
+    def test_a_completed_run_with_deferred_books_is_not_finished(self) -> None:
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [accepted("mine")]
+        transport.status_responses = {"mine": [finished("mine", deferred=2)]}
+
+        outcome = self.build(transport, clock).refresh(author_id=7, force=True)
+
+        assert outcome.status == COMPLETED
+        assert outcome.unsettled == 2
+        assert not outcome.finished
+
+    def test_a_completed_run_with_failed_books_is_not_finished(self) -> None:
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [accepted("mine")]
+        transport.status_responses = {"mine": [finished("mine", failed=1)]}
+
+        assert not self.build(transport, clock).refresh(author_id=7, force=True).finished
+
+    def test_the_control_a_clean_completed_run_is_finished(self) -> None:
+        # Without this the two above would pass for a tool that never records anything.
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [accepted("mine")]
+        transport.status_responses = {"mine": [finished("mine")]}
+
+        outcome = self.build(transport, clock).refresh(author_id=7, force=True)
+
+        assert outcome.unsettled == 0
+        assert outcome.finished
+
+    def test_an_author_with_unsettled_books_is_offered_again(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        state_path = tmp_path / "state.json"
+        first = RecordingTransport([book(1, ["Ada Wren"], ["Cyberpunk"])])
+        first.monitored = {"Ada Wren": 42}
+        first.start_responses = [accepted("r1")]
+        first.status_responses = {"r1": [finished("r1", deferred=1)]}
+        clock = Clock()
+
+        code = run(
+            ListenarrApi(first), wanted=[CYBERPUNK], mode=MATCH_PHRASE, do_refresh=True,
+            force=True, region="us", language="all",
+            state=StateFile(state_path, "host:18901"),
+            sequencer=Sequencer(ListenarrApi(first), 5.0, 600.0, 5, clock.sleep, clock, quiet),
+            log=quiet,
+        )
+
+        assert code == EXIT_REFRESH_INCOMPLETE
+        assert StateFile(state_path, "host:18901").completed() == set()
+
+
+class TestCollisionBudget:
+    """A run holding the gate must not cost max_attempts whole run timeouts."""
+
+    def test_giving_up_on_the_held_run_gives_up_on_the_author(self) -> None:
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [in_flight("held")] * 5
+        transport.status_responses = {"held": [running("held")]}
+
+        outcome = Sequencer(
+            ListenarrApi(transport), poll_interval=5.0, run_timeout=20.0, max_attempts=5,
+            sleep=clock.sleep, now=clock, log=quiet,
+        ).refresh(author_id=7, force=True)
+
+        assert outcome.status == GAVE_UP
+        # One POST, not five. Waiting out the same stuck run five times is the difference
+        # between a long wait and a day of them.
+        assert len(transport.posts()) == 1
+
+    def test_the_control_a_gate_that_clears_lets_the_author_through(self) -> None:
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [in_flight("held"), accepted("mine")]
+        transport.status_responses = {"held": [running("held"), finished("held")],
+                                      "mine": [finished("mine")]}
+
+        outcome = Sequencer(
+            ListenarrApi(transport), poll_interval=5.0, run_timeout=600.0, max_attempts=5,
+            sleep=clock.sleep, now=clock, log=quiet,
+        ).refresh(author_id=7, force=True)
+
+        assert outcome.status == COMPLETED
+        assert len(transport.posts()) == 2
+
+    def test_a_forgotten_run_does_not_become_a_hot_loop(self) -> None:
+        # A 404 on the status poll returns without sleeping, so the retry after a collision has
+        # to carry its own floor or the client spins as fast as the network allows.
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [in_flight("gone"), accepted("mine")]
+        transport.status_responses = {"mine": [finished("mine")]}
+        transport.status_responses["gone"] = [Response(404, {}, {"message": "no such run"})]
+
+        Sequencer(
+            ListenarrApi(transport), poll_interval=5.0, run_timeout=600.0, max_attempts=5,
+            sleep=clock.sleep, now=clock, log=quiet,
+        ).refresh(author_id=7, force=True)
+
+        assert clock.slept == [5.0]
+
+
+class TestTargetKey:
+    """The state key is the host and port, and nothing else."""
+
+    def test_credentials_in_the_url_stay_out_of_the_key(self) -> None:
+        # Which is what keeps them out of the state file on disk.
+        assert target_of("http://operator:hunter2@host:18901") == "host:18901"
+
+    def test_the_same_instance_with_and_without_credentials_is_one_key(self) -> None:
+        assert target_of("http://host:18901") == target_of("http://operator@host:18901")
+
+    def test_an_implied_port_and_a_written_one_agree(self) -> None:
+        assert target_of("http://host") == target_of("http://host:80")
+
+    def test_the_control_two_instances_are_two_keys(self) -> None:
+        assert target_of("http://host:18901") != target_of("http://host:18902")
+
+
+class TestArgumentValidation:
+    """Values that would silently turn the tool into a no-op are refused."""
+
+    def args(self, *extra: str) -> Any:
+        return parse_args(["--base-url", "http://h:18901", "--genre", CYBERPUNK, *extra])
+
+    def test_zero_attempts_is_refused(self) -> None:
+        # With zero the loop body never runs, no POST is issued, and every author is reported
+        # incomplete as though the server had refused it.
+        with pytest.raises(SystemExit) as exit_info:
+            self.args("--max-attempts", "0")
+        assert exit_info.value.code == 2
+
+    def test_a_negative_run_timeout_is_refused(self) -> None:
+        with pytest.raises(SystemExit):
+            self.args("--run-timeout", "-1")
+
+    def test_zero_run_timeout_is_allowed_and_means_no_deadline(self) -> None:
+        # The control: zero is a real setting, not a mistake, so it must not be refused with
+        # the negative values.
+        assert self.args("--run-timeout", "0").run_timeout == 0
+
+    def test_the_default_run_timeout_outlasts_the_servers_own_window(self) -> None:
+        # The server windows every run at MetadataRefreshIntervalHours, which defaults to 24.
+        # A client deadline shorter than that abandons runs the server goes on to finish.
+        assert self.args().run_timeout > 24 * 60 * 60
+
+
+class TestRedirectGuard:
+    """The port refusal is checked once, and urllib follows redirects."""
+
+    def test_a_redirect_to_another_origin_is_refused(self) -> None:
+        from genre_refresh import SameOriginRedirect
+
+        handler = SameOriginRedirect("host:18901")
+        request = urllib.request.Request("http://host:18901/api/v1/library")
+
+        with pytest.raises(ApiError):
+            handler.redirect_request(
+                request, None, 302, "Found", {}, "http://host:4545/api/v1/library"
+            )
+
+    def test_the_control_a_redirect_within_the_same_origin_is_allowed(self) -> None:
+        # Without this the guard could be a handler that refuses every redirect, which would
+        # break an instance behind a URL base that redirects to add a trailing slash.
+        from genre_refresh import SameOriginRedirect
+
+        handler = SameOriginRedirect("host:18901")
+        request = urllib.request.Request("http://host:18901/api/v1/library")
+
+        assert handler.redirect_request(
+            request, None, 302, "Found", {}, "http://host:18901/api/v1/library/"
+        ) is not None

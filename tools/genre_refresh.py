@@ -30,17 +30,19 @@ Genre matching
 Provider genre strings are inconsistent, so matching is a judgement call and the choice is stated
 here rather than buried.
 
-Both sides are normalised: case-folded, every non-alphanumeric run turned into a single space,
-whitespace collapsed. A book's genre field is then split on the separators providers use to pack
-several genres into one string (comma, semicolon, slash, pipe, ampersand, and the word "and"), so
-"Science Fiction & Fantasy" becomes two genres rather than one long one.
+Both sides are normalised the same way and split the same way. Normalising case-folds, folds
+accents away, and turns every run of separators into a single space. Splitting breaks a genre on
+the characters providers use to pack several genres into one string (comma, semicolon, slash,
+pipe, ampersand, plus) and on the word "and", so "Science Fiction & Fantasy" is two genres rather
+than one long one, whether it arrives from the provider or is typed as the request.
 
-The default mode is `phrase`: a request matches when its normalised words appear as a consecutive
-run of words inside one of the book's normalised genres. So asking for "science fiction" catches
-"Military Science Fiction" and "Science Fiction & Fantasy". `--match exact` requires the whole
-normalised genre to be equal.
+The default mode is `phrase`: a request part matches when its normalised words appear as a
+consecutive run of words inside one of the book's normalised genres, and every part of the request
+has to match something. So asking for "science fiction" catches "Military Science Fiction" and
+"Science Fiction & Fantasy", while asking for "Science Fiction & Fantasy" needs the book to carry
+both. `--match exact` requires each part to equal a whole stored genre.
 
-What phrase matching MISSES, in both directions:
+What this MISSES, in both directions:
 
 * Synonyms and abbreviations. "sci-fi" normalises to "sci fi" and does not match "science
   fiction". Neither does "SF". There is no synonym list and no stemming; a hyphen inside a single
@@ -51,6 +53,9 @@ What phrase matching MISSES, in both directions:
 * A generic head word over-matches. Asking for "fiction" selects "Historical Fiction",
   "Literary Fiction" and everything else built on the word. That is the cost of catching
   compounds, and the mitigation is to ask for a specific phrase.
+* A compound request is an AND. Asking for "Science Fiction & Fantasy" will not select a book
+  tagged only "Science Fiction". Ask for the parts separately, as two --genre arguments, to get
+  either one.
 * Anything the provider never wrote down. Selection can only see genres already stored, so a book
   whose metadata has never been populated has no genres and is invisible to this tool. That is a
   real gap for exactly the library this is meant to help, and there is no client-side fix for it:
@@ -67,24 +72,38 @@ Resumability
 ------------
 
 It will be interrupted. A state file (--state, default genre-refresh-state.json in the working
-directory) records the monitored author ids whose runs reached Completed, keyed by the target
-host and port so one file can serve more than one instance. It is rewritten atomically after each
-author, so an interrupt loses at most the author in flight.
+directory) records the monitored author ids that finished, keyed by the target host and port so
+one file can serve more than one instance. It is rewritten through a temporary file and renamed
+after each author, so an interrupt loses at most the author in flight.
 
-Only `Completed` counts as done. A run that comes back `Truncated` spent its request window before
-reaching the end of the author's books, and the books it did not reach keep their unset timestamps
-and stay at the head of the queue, so that author stays pending and a later invocation picks it up
-again. `Failed` and `Cancelled` likewise stay pending. Re-running an author that did finish is
-harmless, but skipping it is the point.
+An author is recorded only when the run came back `Completed` AND left nothing unsettled.
+`Completed` on its own means the run reached the end of the author's list, not that every book on
+it came back with an answer: a book the provider pushed back on is counted as deferred, one that
+threw is counted as failed, and neither is stamped. Recording those would mean the tool never
+comes back for them. `Truncated` means the run spent its request window before reaching the end,
+so the rest keep their unset timestamps too. `Failed` and `Cancelled` likewise stay pending.
+
+The cost of that choice: an author with a book that never settles is offered again on every
+invocation, spending the provider budget on the rest of that author each time. The run reports
+how many books did not settle, so a repeat is visible rather than silent, and an author that
+reports the same number twice is one to stop re-running.
+
+Cost
+----
+
+The library read is the whole library in one response, because the list endpoint takes no paging
+or filter parameters. It is re-read after each author so the after-count is current, which is one
+full library serialisation per author refreshed. That is local work on the server and spends none
+of the provider budget, but it is not free on a large library.
 
 Exit codes
 ----------
 
-0, everything asked for was done: listed, or every selected author reached Completed.
+0, everything asked for was done: listed, or every selected author finished.
 1, no author in the library matched the requested genres.
 2, usage, including the production-port refusal.
 3, the API could not be used: unreachable, unexpected shape, or the feature is turned off.
-4, at least one author did not reach Completed. Its state was not recorded, so run it again.
+4, at least one author did not finish. Its state was not recorded, so run it again.
 5, interrupted.
 """
 
@@ -96,6 +115,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -126,7 +146,7 @@ TERMINAL_GOOD = frozenset({COMPLETED})
 # Providers pack several genres into one string with these. "and" is a word, so it is handled by
 # the tokeniser rather than here.
 GENRE_SEPARATORS = re.compile(r"[,;/|&+]")
-NON_ALPHANUMERIC = re.compile(r"[^0-9a-z]+")
+NON_ALPHANUMERIC = re.compile(r"[\W_]+", re.UNICODE)
 
 MATCH_PHRASE = "phrase"
 MATCH_EXACT = "exact"
@@ -162,7 +182,12 @@ class Transport(Protocol):
 
 
 def normalize_genre(text: str) -> str:
-    """Case-fold a genre and reduce every non-alphanumeric run to one space.
+    """Case-fold a genre, fold its accents away, and reduce separators to single spaces.
+
+    The accent folding is what lets "Ciencia Ficcion" match "Ciencia Ficcion" written with the
+    accent, which is the common case where one provider accents a genre and another does not.
+    Letters outside the Latin script survive rather than being stripped to nothing, so a genre in
+    another script can still be asked for by pasting it.
 
     Args:
         text: A genre string as a provider wrote it.
@@ -170,7 +195,9 @@ def normalize_genre(text: str) -> str:
     Returns:
         The normalised form, which may be empty.
     """
-    return NON_ALPHANUMERIC.sub(" ", text.casefold()).strip()
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    unaccented = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return NON_ALPHANUMERIC.sub(" ", unaccented).strip()
 
 
 def split_genre_field(text: str) -> list[str]:
@@ -214,13 +241,19 @@ def genre_matches(wanted: Sequence[str], stored: Iterable[str], mode: str) -> li
 
     matched: list[str] = []
     for request in wanted:
-        request_tokens = genre_tokens(request)
-        if not request_tokens:
+        # The request is split exactly like a stored genre is. An operator copying a compound
+        # out of the interface, "Science Fiction & Fantasy", is naming two genres, and without
+        # this the request stays one long token run that no split stored genre can contain: it
+        # would match nothing at all and report it as a library with none of that genre.
+        parts = [tokens for part in split_genre_field(request) if (tokens := genre_tokens(part))]
+        if not parts:
             continue
+        # Every part has to be present. A compound names both genres, so requiring both is the
+        # reading that does not quietly widen "Science Fiction & Fantasy" into all of fantasy.
         if mode == MATCH_EXACT:
-            hit = any(tokens == request_tokens for tokens in book_tokens)
+            hit = all(any(tokens == part for tokens in book_tokens) for part in parts)
         else:
-            hit = any(_contains_run(tokens, request_tokens) for tokens in book_tokens)
+            hit = all(any(_contains_run(tokens, part) for tokens in book_tokens) for part in parts)
         if hit:
             matched.append(request)
     return matched
@@ -270,12 +303,17 @@ def select_authors(
         book_id = item.get("id")
         if not isinstance(book_id, int):
             continue
-        authors = [name for name in _string_list(item.get("authors")) if name.strip()]
+        # Deduped per item, case-insensitively. An item naming the same author twice would
+        # otherwise push its id in twice and inflate both the displayed counts and the ordering.
+        authors: dict[str, str] = {}
+        for name in _string_list(item.get("authors")):
+            if name.strip():
+                authors.setdefault(name.casefold(), name)
         if not authors:
             continue
 
         matched = genre_matches(wanted, _string_list(item.get("genres")), mode)
-        for name in authors:
+        for name in authors.values():
             key = name.casefold()
             selection = selections.get(key)
             if selection is None:
@@ -358,7 +396,10 @@ class ListenarrApi:
         query = urllib.parse.urlencode({"name": name, "region": region, "language": language})
         response = self._transport("GET", f"/authors/monitoring/status?{query}")
         if response.status == 400:
-            return None
+            # A 400 is a rejected request, not an answer about monitoring: the endpoint says
+            # "not monitored" with a 200 and isMonitored false. Reporting it as unmonitored
+            # would send the operator looking at the wrong thing.
+            raise ApiError(f"the author monitoring endpoint rejected a lookup for {name!r}")
         if response.status != 200:
             raise ApiError(f"author monitoring status answered {response.status} for an author")
         body = response.dict_body()
@@ -379,6 +420,36 @@ class ListenarrApi:
         return self._transport("GET", f"/library/refresh-metadata/{run_id}")
 
 
+class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuses a redirect that would move the request to another host or port.
+
+    The production-port refusal is checked once, against the base URL, and urllib follows
+    redirects by default. Without this an instance on an allowed port could answer a read with a
+    302 to port 4545 and the tool would follow it to a live instance, which is the one thing the
+    guard exists to prevent. Any cross-origin redirect is refused rather than only that port,
+    because a tool that talks to a host the operator did not name is wrong either way.
+    """
+
+    def __init__(self, origin: str) -> None:
+        self._origin = origin
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        if target_of(newurl) != self._origin:
+            raise ApiError(
+                f"refusing a redirect away from {self._origin}; the instance answered "
+                f"{code} pointing somewhere else"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class UrllibTransport:
     """Real HTTP, with the cookie jar and CSRF token a write to this API needs.
 
@@ -393,7 +464,8 @@ class UrllibTransport:
         self._api_key = api_key
         self._timeout = timeout
         self._opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(CookieJar())
+            urllib.request.HTTPCookieProcessor(CookieJar()),
+            SameOriginRedirect(target_of(base_url)),
         )
 
     def __call__(
@@ -454,20 +526,42 @@ class RunOutcome:
     run_id: str | None = None
     processed: int = 0
     updated: int = 0
+    skipped: int = 0
+    deferred: int = 0
     failed: int = 0
     requests_spent: int = 0
     detail: str = ""
 
     @property
+    def unsettled(self) -> int:
+        """Books the run reached but did not settle, so they kept their unset timestamps.
+
+        A book the provider pushed back on, or one that threw, is counted and then left
+        unstamped, exactly like the leftovers of a truncated run. The run still ends Completed.
+        """
+        return self.deferred + self.failed
+
+    @property
     def finished(self) -> bool:
-        """Whether the author's whole catalogue was reached, which is what lets it be recorded."""
-        return self.status in TERMINAL_GOOD
+        """Whether every book in the author's catalogue settled, which is what lets it be recorded.
+
+        Completed alone is not enough. It means the loop reached the end of the list, not that
+        every book on the list came back with an answer, and an author recorded on Completed with
+        unsettled books would never be offered again.
+        """
+        return self.status in TERMINAL_GOOD and self.unsettled == 0
 
 
 # Outcome statuses this tool invents, for the cases where no run existed to report one.
 NOT_MONITORED = "NotMonitored"
 UNKNOWN_AUTHOR = "UnknownAuthor"
 GAVE_UP = "GaveUp"
+
+# A run the server no longer has. The registry is in memory and holds only the active run and
+# the last one, so a run displaced by two later ones is genuinely gone. This is kept apart from
+# GaveUp because the two mean opposite things about the gate: a forgotten run is not holding it
+# and the author can be offered again, while a run that outlasted the deadline still is.
+FORGOTTEN = "Forgotten"
 
 
 class Sequencer:
@@ -522,7 +616,21 @@ class Sequencer:
                 self._log(
                     f"    a {body.get('scope', 'refresh')} run is already in flight; waiting for it"
                 )
-                self._await_run(in_flight)
+                held = self._await_run(in_flight)
+                if held.status == GAVE_UP:
+                    # Whatever holds the gate outlasted the deadline and is therefore still
+                    # holding it. Re-offering the author now collides again, and doing that
+                    # max_attempts times is the difference between a long wait and a day of them.
+                    return RunOutcome(
+                        GAVE_UP,
+                        in_flight,
+                        detail=f"a run held the refresh gate: {held.detail}",
+                    )
+                # A floor under the retry even when the wait returned at once. The server's own
+                # fifteen second cooldown makes this a 429 in practice, and a refused attempt
+                # spends that cooldown too, but the client should not depend on the server to
+                # keep it from spinning.
+                self._sleep(self._poll_interval)
                 continue
 
             if response.status == 429:
@@ -539,13 +647,12 @@ class Sequencer:
         return RunOutcome(GAVE_UP, detail=f"still not admitted after {self._max_attempts} attempts")
 
     def _await_run(self, run_id: str) -> RunOutcome:
-        """Poll one run until it leaves Running, or until the run timeout."""
-        deadline = self._now() + self._run_timeout
+        """Poll one run until it leaves Running, or until the run timeout if there is one."""
+        deadline = self._now() + self._run_timeout if self._run_timeout > 0 else None
         while True:
             response = self._api.run_status(run_id)
             if response.status == 404:
-                # The registry is in memory and a restart loses it. Not a finished run.
-                return RunOutcome(GAVE_UP, run_id, detail="the server forgot the run")
+                return RunOutcome(FORGOTTEN, run_id, detail="the server no longer has the run")
             if response.status != 200:
                 raise ApiError(f"run status answered {response.status}")
 
@@ -557,11 +664,13 @@ class Sequencer:
                     run_id,
                     processed=_int(body.get("processed")),
                     updated=_int(body.get("updated")),
+                    skipped=_int(body.get("skipped")),
+                    deferred=_int(body.get("deferred")),
                     failed=_int(body.get("failed")),
                     requests_spent=_int(body.get("requestsSpent")),
                 )
 
-            if self._now() >= deadline:
+            if deadline is not None and self._now() >= deadline:
                 return RunOutcome(GAVE_UP, run_id, detail="the run outlasted --run-timeout")
             self._sleep(self._poll_interval)
 
@@ -598,6 +707,11 @@ class StateFile:
         self._data = self._load()
 
     def _load(self) -> dict[str, Any]:
+        """Read the file, refusing anything it cannot safely merge into.
+
+        Every shape check here exists so a hand-edited or truncated file comes back as exit 3
+        with a sentence, rather than as a traceback out of the middle of a refresh.
+        """
         try:
             raw = json.loads(self._path.read_text())
         except FileNotFoundError:
@@ -606,20 +720,41 @@ class StateFile:
             raise ApiError(f"the state file could not be read: {error}") from error
         if not isinstance(raw, dict):
             raise ApiError("the state file does not hold an object")
-        raw.setdefault("targets", {})
+
+        version = raw.get("version", STATE_VERSION)
+        if not isinstance(version, int) or version > STATE_VERSION:
+            raise ApiError(
+                f"the state file is version {version!r}, which this tool does not understand. "
+                "Point --state somewhere else rather than letting it be rewritten."
+            )
+        raw["version"] = STATE_VERSION
+        if not isinstance(raw.get("targets"), dict):
+            raw["targets"] = {}
         return raw
 
     def completed(self) -> set[int]:
         """The monitored author ids already finished against this target."""
-        target = self._data["targets"].get(self._target, {})
-        done = target.get("completed", {}) if isinstance(target, dict) else {}
-        return {int(key) for key in done} if isinstance(done, dict) else set()
+        target = self._data["targets"].get(self._target)
+        done = target.get("completed") if isinstance(target, dict) else None
+        if not isinstance(done, dict):
+            return set()
+        recorded: set[int] = set()
+        for key in done:
+            try:
+                recorded.add(int(key))
+            except (TypeError, ValueError):
+                # A key that is not an author id cannot match one, so it is ignored rather than
+                # allowed to abort a run that is otherwise fine.
+                continue
+        return recorded
 
     def record(self, author_id: int, name: str, outcome: RunOutcome) -> None:
         """Write one finished author down, atomically, right after it finished."""
         targets = self._data["targets"]
         target = targets.setdefault(self._target, {})
-        target.setdefault("completed", {})[str(author_id)] = {
+        if not isinstance(target.get("completed"), dict):
+            target["completed"] = {}
+        target["completed"][str(author_id)] = {
             "name": name,
             "runId": outcome.run_id,
             "status": outcome.status,
@@ -629,18 +764,34 @@ class StateFile:
         self._write()
 
     def _write(self) -> None:
-        temporary = self._path.with_suffix(f"{self._path.suffix}.tmp")
+        """Write through a temporary file and rename, so a reader never sees a half-written one.
+
+        The fsync is what makes the rename mean something after a power loss rather than only
+        after an interrupt: without it the rename can land while the contents have not.
+        """
+        temporary = self._path.with_name(self._path.name + ".tmp")
         try:
-            temporary.write_text(json.dumps(self._data, indent=2, sort_keys=True) + "\n")
+            payload = json.dumps(self._data, indent=2, sort_keys=True) + "\n"
+            with temporary.open("w") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(temporary, self._path)
         except OSError as error:
             raise ApiError(f"the state file could not be written: {error}") from error
 
 
 def target_of(base_url: str) -> str:
-    """The host and port a state file is keyed by."""
+    """The host and port a state file is keyed by, and the origin a redirect may not leave.
+
+    Built from the parsed host and port rather than the raw netloc, so that any credentials in
+    the URL stay out of the state file on disk, and so that one instance reached with and
+    without them is one key rather than two.
+    """
     parsed = urllib.parse.urlsplit(base_url)
-    return parsed.netloc.casefold()
+    host = (parsed.hostname or "").casefold()
+    port = port_of(base_url)
+    return f"{host}:{port}" if port is not None else host
 
 
 def port_of(base_url: str) -> int | None:
@@ -700,11 +851,13 @@ def run(
         head = f"[{position}/{len(selected)}] {author.name}"
         author_id = api.monitored_author_id(author.name, region, language)
         if author_id is None:
-            log(f"{head}: not a monitored author, skipped")
+            log(f"{head}: {NOT_MONITORED}, no id to refresh, skipped")
             incomplete += 1
             continue
         if author_id in already:
-            log(f"{head}: already completed in an earlier run, skipped")
+            # Also catches two spellings of one author in the library, which the server resolves
+            # to a single monitored id: the second spelling is the same author, already done.
+            log(f"{head}: already completed, skipped")
             continue
 
         before = count_series_asins(library, author.book_ids)
@@ -717,15 +870,21 @@ def run(
         detail = f" ({outcome.detail})" if outcome.detail else ""
         log(
             f"{head}: {outcome.status}{detail}, {outcome.processed} processed, "
-            f"{outcome.updated} updated, {outcome.failed} failed, "
+            f"{outcome.updated} updated, {outcome.deferred} deferred, {outcome.failed} failed, "
             f"{outcome.requests_spent} provider requests; "
             f"seriesAsin {before} -> {after} of {len(author.book_ids)}"
         )
 
         if outcome.finished:
             state.record(author_id, author.name, outcome)
+            already.add(author_id)
         else:
             incomplete += 1
+            if outcome.unsettled:
+                log(
+                    f"{head}: the run reached the end of the list but {outcome.unsettled} books "
+                    "did not settle, so they kept their unset timestamps"
+                )
             log(f"{head}: not recorded as done, so a later run will pick it up again")
 
     log("")
@@ -795,9 +954,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--run-timeout",
         type=float,
-        default=7200.0,
+        default=90000.0,
         metavar="SECONDS",
-        help="how long one author's run may take before it is given up on. Default: 7200.",
+        help="how long one author's run may take before it is given up on, or 0 to follow it "
+        "for as long as it runs. The default is just over the 24 hours the server's own run "
+        "window allows, because a client deadline shorter than that abandons runs the server "
+        "goes on to finish. Default: 90000.",
     )
     parser.add_argument(
         "--http-timeout", type=float, default=120.0, metavar="SECONDS", help="per request timeout."
@@ -827,6 +989,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.poll_interval <= 0:
         parser.error("--poll-interval must be positive; this tool does not busy-poll")
+    if args.run_timeout < 0:
+        parser.error("--run-timeout must be zero or positive; zero means no client deadline")
+    if args.max_attempts < 1:
+        parser.error("--max-attempts must be at least 1, or no author would ever be offered")
+    if args.http_timeout <= 0:
+        parser.error("--http-timeout must be positive")
     return args
 
 

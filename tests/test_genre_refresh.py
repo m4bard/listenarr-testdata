@@ -37,6 +37,7 @@ from genre_refresh import (
     EXIT_NO_MATCH,
     EXIT_OK,
     EXIT_REFRESH_INCOMPLETE,
+    FORGOTTEN,
     GAVE_UP,
     MATCH_EXACT,
     MATCH_PHRASE,
@@ -44,6 +45,7 @@ from genre_refresh import (
     ListenarrApi,
     RefreshDisabled,
     Response,
+    RunOutcome,
     Sequencer,
     StateFile,
     count_series_asins,
@@ -121,9 +123,10 @@ class RecordingTransport:
                 raise AssertionError(f"an unscripted status poll for run {run_id}")
             return queue.pop(0) if len(queue) > 1 else queue[0]
 
-        if bare.startswith("/configuration"):
-            # Answered rather than raised, so the test that asserts this tool never reads or
-            # writes a setting has something it could actually catch.
+        if method == "GET" and bare.split("/")[1:2] == ["configuration"]:
+            # Answered rather than raised, and ONLY for a read of exactly that path, so the test
+            # asserting this tool never touches a setting has something it could catch while the
+            # catch-all below still refuses everything else. A write to it still raises.
             return Response(200, {}, {})
 
         raise AssertionError(f"an unexpected call: {method} {path}")
@@ -604,11 +607,6 @@ class TestProductionPortGuard:
     def args(self, base_url: str, *extra: str) -> Any:
         return parse_args(["--base-url", base_url, "--genre", CYBERPUNK, *extra])
 
-    def test_it_refuses_the_production_port(self) -> None:
-        with pytest.raises(SystemExit) as exit_info:
-            self.args("http://somewhere:4545")
-        assert exit_info.value.code == 2
-
     def test_it_refuses_the_production_port_in_both_modes(self) -> None:
         # Reading is still talking to it, and a tool that will read production is one flag away
         # from writing to it. Both modes are checked in one test because the guard runs before
@@ -863,12 +861,17 @@ class TestCollisionBudget:
         transport.status_responses = {"mine": [finished("mine")]}
         transport.status_responses["gone"] = [Response(404, {}, {"message": "no such run"})]
 
-        Sequencer(
+        outcome = Sequencer(
             ListenarrApi(transport), poll_interval=5.0, run_timeout=600.0, max_attempts=5,
             sleep=clock.sleep, now=clock, log=quiet,
         ).refresh(author_id=7, force=True)
 
+        # A forgotten run means the gate is free, so the author IS re-offered, unlike a run that
+        # outlasted its deadline and is therefore still holding it.
+        assert outcome.status == COMPLETED
+        assert len(transport.posts()) == 2
         assert clock.slept == [5.0]
+        assert not RunOutcome(FORGOTTEN).finished
 
 
 class TestTargetKey:
@@ -941,3 +944,251 @@ class TestRedirectGuard:
         assert handler.redirect_request(
             request, None, 302, "Found", {}, "http://host:18901/api/v1/library/"
         ) is not None
+
+
+class TestRedirectGuardOnTheRequestPath:
+    """The hand-called guard tests above prove the comparison, not that it is ever consulted.
+
+    Both of those would pass if the handler were never passed to build_opener at all, or if
+    urllib installed its own default alongside it and ran that one first. The guard is a safety
+    property about not reaching a live instance, so it gets measured through a socket.
+    """
+
+    def serve(self, handler_factory: Any) -> Any:
+        from http.server import HTTPServer
+
+        server = HTTPServer(("127.0.0.1", 0), handler_factory)
+        assert server.server_address[1] != 4545
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server
+
+    def stub(self, seen: list[str], location: dict[str, str | None]) -> Any:
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_: Any) -> None:
+                pass
+
+            def do_GET(self) -> None:  # the name BaseHTTPRequestHandler dispatches to
+                seen.append(self.path)
+                target = location["value"]
+                if target and self.path.endswith("/redirect"):
+                    self.send_response(302)
+                    self.send_header("Location", target)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                payload = json.dumps({"ok": True}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+        return Handler
+
+    def test_a_redirect_to_another_origin_is_refused_and_never_reaches_it(self) -> None:
+        from genre_refresh import UrllibTransport
+
+        here_seen: list[str] = []
+        there_seen: list[str] = []
+        location: dict[str, str | None] = {"value": None}
+
+        here = self.serve(self.stub(here_seen, location))
+        there = self.serve(self.stub(there_seen, {"value": None}))
+        try:
+            there_url = f"http://127.0.0.1:{there.server_address[1]}"
+            here_url = f"http://127.0.0.1:{here.server_address[1]}"
+            transport = UrllibTransport(here_url, None, timeout=10.0)
+
+            # The apparatus control first: the stub really does redirect, and a same-origin
+            # redirect is followed. Without this the refusal below could be a stub that never
+            # sent a Location at all, which is how this test failed the first time it was run.
+            location["value"] = f"{here_url}/api/v1/library"
+            assert transport("GET", "/redirect").status == 200
+            assert here_seen == ["/api/v1/redirect", "/api/v1/library"]
+
+            # The finding: a redirect that leaves the origin is refused.
+            here_seen.clear()
+            location["value"] = f"{there_url}/api/v1/library"
+            with pytest.raises(ApiError):
+                transport("GET", "/redirect")
+
+            # And it never arrived. A guard that raised after following would be no guard.
+            assert there_seen == []
+        finally:
+            for server in (here, there):
+                server.shutdown()
+                server.server_close()
+
+    def test_a_relative_location_is_still_followed(self) -> None:
+        # A real instance behind a URL base issues these, and urllib resolves them against the
+        # request before the guard sees them. If the guard refused these it would break a
+        # perfectly ordinary deployment.
+        from genre_refresh import UrllibTransport
+
+        seen: list[str] = []
+        location: dict[str, str | None] = {"value": "/api/v1/library"}
+        server = self.serve(self.stub(seen, location))
+        try:
+            base = f"http://127.0.0.1:{server.server_address[1]}"
+            assert UrllibTransport(base, None, timeout=10.0)("GET", "/redirect").status == 200
+            assert seen == ["/api/v1/redirect", "/api/v1/library"]
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+class TestPollingAndStateHardening:
+    """The cases that used to end in a long spin or a traceback."""
+
+    def test_a_200_with_no_status_is_an_apparatus_failure(self) -> None:
+        # It used to fall through to the sleep and poll for the whole run timeout, which at the
+        # defaults is thousands of requests against an instance plainly not answering.
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [accepted("mine")]
+        transport.status_responses = {"mine": [Response(200, {}, {"runId": "mine"})]}
+
+        with pytest.raises(ApiError):
+            Sequencer(ListenarrApi(transport), 5.0, 600.0, 5, clock.sleep, clock, quiet).refresh(
+                author_id=7, force=True
+            )
+        assert clock.slept == []
+
+    def test_the_control_a_200_with_a_status_still_polls(self) -> None:
+        transport = RecordingTransport()
+        clock = Clock()
+        transport.start_responses = [accepted("mine")]
+        transport.status_responses = {"mine": [running("mine"), finished("mine")]}
+
+        outcome = Sequencer(
+            ListenarrApi(transport), 5.0, 600.0, 5, clock.sleep, clock, quiet
+        ).refresh(author_id=7, force=True)
+
+        assert outcome.status == COMPLETED
+        assert clock.slept == [5.0]
+
+    def test_a_state_file_whose_targets_is_not_an_object_is_refused(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps({"version": 1, "targets": ["not", "an", "object"]}))
+
+        with pytest.raises(ApiError):
+            StateFile(path, "host:18901")
+
+    def test_a_state_file_from_a_future_version_is_refused(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps({"version": 99, "targets": {}}))
+
+        with pytest.raises(ApiError):
+            StateFile(path, "host:18901")
+
+    def test_the_control_a_current_state_file_loads(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps({"version": 1, "targets": {"host:18901":
+                                    {"completed": {"42": {"name": "Ada Wren"}}}}}))
+
+        assert StateFile(path, "host:18901").completed() == {42}
+
+    def test_no_temporary_file_is_left_behind(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "state.json"
+        StateFile(path, "host:18901").record(42, "Ada Wren", _outcome_completed())
+
+        assert path.exists()
+        assert list(tmp_path.glob("*.tmp")) == []
+
+
+class TestPendingRecord:
+    """An author that did not finish is written down, so a repeat can be reported."""
+
+    def test_an_unfinished_author_is_recorded_as_pending_with_its_count(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "state.json"
+        state = StateFile(path, "host:18901")
+        state.record_pending(42, "Ada Wren", RunOutcome(COMPLETED, "r1", deferred=3))
+
+        assert StateFile(path, "host:18901").previous_unsettled(42) == 3
+        # It is NOT recorded as completed, which is what makes it get re-offered.
+        assert StateFile(path, "host:18901").completed() == set()
+
+    def test_the_control_an_author_never_seen_has_no_previous_count(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        assert StateFile(tmp_path / "state.json", "host:18901").previous_unsettled(42) is None
+
+    def test_finishing_clears_the_pending_record(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "state.json"
+        state = StateFile(path, "host:18901")
+        state.record_pending(42, "Ada Wren", RunOutcome(COMPLETED, "r1", deferred=3))
+        state.record(42, "Ada Wren", _outcome_completed())
+
+        reloaded = StateFile(path, "host:18901")
+        assert reloaded.completed() == {42}
+        assert reloaded.previous_unsettled(42) is None
+
+
+class TestEmptyGenreGuard:
+    """A genre that normalises away is the one argument that could still silently no-op."""
+
+    def args(self, *genres: str) -> Any:
+        flags: list[str] = []
+        for genre in genres:
+            flags += ["--genre", genre]
+        return parse_args(["--base-url", "http://h:18901", *flags])
+
+    def test_a_request_that_names_nothing_is_a_usage_error_not_an_empty_library(self) -> None:
+        # Exit 1 is published as "no author in the library matched", which is a claim about the
+        # library. A request naming nothing is a claim about the request.
+        for genre in ("", "   ", "&", "---"):
+            with pytest.raises(SystemExit) as exit_info:
+                self.args(genre)
+            assert exit_info.value.code == 2
+
+    def test_the_control_one_usable_genre_among_empties_is_accepted(self) -> None:
+        parsed = self.args("&", CYBERPUNK)
+        assert parsed.genres == ["&", CYBERPUNK]
+
+    def test_the_control_an_ordinary_request_is_accepted(self) -> None:
+        assert self.args(CYBERPUNK).genres == [CYBERPUNK]
+
+
+class TestAndSpelling:
+    """The word "and" joins within a genre; it does not separate two."""
+
+    def test_phrase_mode_does_not_care_which_spelling(self) -> None:
+        assert genre_matches(["fantasy"], ["Science Fiction and Fantasy"], MATCH_PHRASE)
+        assert genre_matches(["fantasy"], ["Science Fiction & Fantasy"], MATCH_PHRASE)
+
+    def test_exact_mode_does_and_that_is_documented(self) -> None:
+        # The ampersand separates, so "fantasy" is a whole stored genre.
+        assert genre_matches(["fantasy"], ["Science Fiction & Fantasy"], MATCH_EXACT)
+        # The word does not, so the stored genre is three words and "fantasy" is not equal to it.
+        assert not genre_matches(["fantasy"], ["Science Fiction and Fantasy"], MATCH_EXACT)
+
+    def test_a_joining_and_inside_one_genre_is_ignored(self) -> None:
+        assert genre_matches(["rock and roll"], ["Rock Roll"], MATCH_EXACT)
+        assert genre_matches(["rock roll"], ["Rock and Roll"], MATCH_EXACT)
+
+
+class TestExitCodeContract:
+    """A crash must never be readable as an answer about the library."""
+
+    def test_an_unanticipated_error_is_an_api_failure_not_no_match(self) -> None:
+        from genre_refresh import EXIT_API, report_failure
+
+        # Python's default for an uncaught exception is 1, which this tool publishes as
+        # EXIT_NO_MATCH, "no author in the library matched". A script branching on the code
+        # would read a crash as a fact about the library.
+        assert report_failure(TypeError("something unforeseen")) == EXIT_API
+        assert report_failure(TypeError("x")) != EXIT_NO_MATCH
+
+    def test_the_controls_each_anticipated_error_keeps_its_own_code(self) -> None:
+        from genre_refresh import EXIT_API, EXIT_INTERRUPTED, report_failure
+
+        assert report_failure(ApiError("unreachable")) == EXIT_API
+        assert report_failure(RefreshDisabled("off")) == EXIT_API
+        # This one has to come out differently, or the mapping could be "everything is 3".
+        assert report_failure(KeyboardInterrupt()) == EXIT_INTERRUPTED

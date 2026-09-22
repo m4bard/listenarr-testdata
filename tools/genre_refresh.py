@@ -33,8 +33,10 @@ here rather than buried.
 Both sides are normalised the same way and split the same way. Normalising case-folds, folds
 accents away, and turns every run of separators into a single space. Splitting breaks a genre on
 the characters providers use to pack several genres into one string (comma, semicolon, slash,
-pipe, ampersand, plus) and on the word "and", so "Science Fiction & Fantasy" is two genres rather
-than one long one, whether it arrives from the provider or is typed as the request.
+pipe, ampersand, plus), so "Science Fiction & Fantasy" is two genres rather than one long one,
+whether it arrives from the provider or is typed as the request. The word "and" is NOT a
+separator; it is dropped as a joining word inside a genre, so "rock and roll" and "rock roll"
+tokenise alike rather than becoming two genres.
 
 The default mode is `phrase`: a request part matches when its normalised words appear as a
 consecutive run of words inside one of the book's normalised genres, and every part of the request
@@ -56,6 +58,15 @@ What this MISSES, in both directions:
 * A compound request is an AND. Asking for "Science Fiction & Fantasy" will not select a book
   tagged only "Science Fiction". Ask for the parts separately, as two --genre arguments, to get
   either one.
+* A compound spelled with "and" is one genre, not two, because only the punctuation separates.
+  Under --match phrase that makes no difference, since a part only has to appear as a run of
+  words. Under --match exact it does: a book tagged "Science Fiction and Fantasy" is one genre of
+  three words, so asking for "fantasy" exactly will not match it, while the same book tagged with
+  an ampersand would. Splitting on the word too would turn "Rock and Roll" into two genres and
+  make "rock" select it, which is worse.
+* Diacritics are folded away in every script, not only where they are decorative. Two genres that
+  differ only by a combining mark normalise alike, which matters for Vietnamese tone marks and
+  Japanese kana voicing and not at all for the genres this is likely to be pointed at.
 * Anything the provider never wrote down. Selection can only see genres already stored, so a book
   whose metadata has never been populated has no genres and is invisible to this tool. That is a
   real gap for exactly the library this is meant to help, and there is no client-side fix for it:
@@ -73,8 +84,10 @@ Resumability
 
 It will be interrupted. A state file (--state, default genre-refresh-state.json in the working
 directory) records the monitored author ids that finished, keyed by the target host and port so
-one file can serve more than one instance. It is rewritten through a temporary file and renamed
-after each author, so an interrupt loses at most the author in flight.
+one file can serve more than one instance, one after another. It is rewritten through a temporary
+file and renamed after each author, so an interrupt loses at most the author in flight. Two
+invocations sharing one state file at the same time will clobber each other's records; give
+concurrent runs separate --state files.
 
 An author is recorded only when the run came back `Completed` AND left nothing unsettled.
 `Completed` on its own means the run reached the end of the author's list, not that every book on
@@ -84,9 +97,10 @@ comes back for them. `Truncated` means the run spent its request window before r
 so the rest keep their unset timestamps too. `Failed` and `Cancelled` likewise stay pending.
 
 The cost of that choice: an author with a book that never settles is offered again on every
-invocation, spending the provider budget on the rest of that author each time. The run reports
-how many books did not settle, so a repeat is visible rather than silent, and an author that
-reports the same number twice is one to stop re-running.
+invocation, spending the provider budget on the rest of that author each time. So an author that
+did not finish is written down too, under its own key with the count that was left unsettled, and
+a later run that gets the same count back says so. Without that record the advice to stop
+re-offering an author would rest on the operator remembering a number from a previous terminal.
 
 Cost
 ----
@@ -100,9 +114,10 @@ Exit codes
 ----------
 
 0, everything asked for was done: listed, or every selected author finished.
-1, no author in the library matched the requested genres.
+1, no author in the library matched the requested genres. Not a crash: see 3.
 2, usage, including the production-port refusal.
-3, the API could not be used: unreachable, unexpected shape, or the feature is turned off.
+3, the API could not be used: unreachable, unexpected shape, or the feature is turned off. Also
+   any error this tool did not anticipate, so that a crash is never mistaken for exit 1.
 4, at least one author did not finish. Its state was not recorded, so run it again.
 5, interrupted.
 """
@@ -111,6 +126,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -658,7 +674,11 @@ class Sequencer:
 
             body = response.dict_body()
             status = str(body.get("status") or "")
-            if status and status != RUNNING:
+            if not status:
+                # Polling this for the whole run timeout would be thousands of requests against
+                # an instance that is plainly not answering the question.
+                raise ApiError(f"run status answered 200 with no status for run {run_id}")
+            if status != RUNNING:
                 return RunOutcome(
                     status,
                     run_id,
@@ -728,13 +748,25 @@ class StateFile:
                 "Point --state somewhere else rather than letting it be rewritten."
             )
         raw["version"] = STATE_VERSION
-        if not isinstance(raw.get("targets"), dict):
+        if "targets" not in raw:
             raw["targets"] = {}
+        elif not isinstance(raw["targets"], dict):
+            raise ApiError("the state file's targets is not an object")
         return raw
 
     def completed(self) -> set[int]:
         """The monitored author ids already finished against this target."""
-        target = self._data["targets"].get(self._target)
+        targets = self._data["targets"]
+        if targets and self._target not in targets:
+            # The key is derived from the host and port, so a state file written against another
+            # spelling of the same instance looks empty rather than wrong. Say so: the
+            # alternative is silently re-refreshing every author already done.
+            print(
+                f"warning: the state file has no record for {self._target}; it holds "
+                f"{', '.join(sorted(targets))}. Nothing will be skipped.",
+                file=sys.stderr,
+            )
+        target = targets.get(self._target)
         done = target.get("completed") if isinstance(target, dict) else None
         if not isinstance(done, dict):
             return set()
@@ -747,6 +779,31 @@ class StateFile:
                 # allowed to abort a run that is otherwise fine.
                 continue
         return recorded
+
+    def previous_unsettled(self, author_id: int) -> int | None:
+        """What the last unfinished attempt on this author left unsettled, if there was one."""
+        target = self._data["targets"].get(self._target)
+        pending = target.get("pending") if isinstance(target, dict) else None
+        entry = pending.get(str(author_id)) if isinstance(pending, dict) else None
+        count = entry.get("unsettled") if isinstance(entry, dict) else None
+        return count if isinstance(count, int) else None
+
+    def record_pending(self, author_id: int, name: str, outcome: RunOutcome) -> None:
+        """Write down an author that did not finish, with what it left unsettled.
+
+        This is what makes "the same count came back twice" something the tool can say rather
+        than something the operator has to remember from a previous terminal.
+        """
+        target = self._data["targets"].setdefault(self._target, {})
+        if not isinstance(target.get("pending"), dict):
+            target["pending"] = {}
+        target["pending"][str(author_id)] = {
+            "name": name,
+            "status": outcome.status,
+            "unsettled": outcome.unsettled,
+            "attemptedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        self._write()
 
     def record(self, author_id: int, name: str, outcome: RunOutcome) -> None:
         """Write one finished author down, atomically, right after it finished."""
@@ -761,13 +818,19 @@ class StateFile:
             "updated": outcome.updated,
             "finishedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
+        # An author that finished is no longer pending, so the old attempt goes.
+        pending = target.get("pending")
+        if isinstance(pending, dict):
+            pending.pop(str(author_id), None)
         self._write()
 
     def _write(self) -> None:
         """Write through a temporary file and rename, so a reader never sees a half-written one.
 
-        The fsync is what makes the rename mean something after a power loss rather than only
-        after an interrupt: without it the rename can land while the contents have not.
+        Both fsyncs are needed for the claim to hold after a power loss rather than only after
+        an interrupt. The first puts the contents on disk, so the rename cannot expose a window
+        of zeroes. The second puts the directory entry the rename created on disk, because
+        without it the rename itself is what gets lost.
         """
         temporary = self._path.with_name(self._path.name + ".tmp")
         try:
@@ -777,8 +840,28 @@ class StateFile:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, self._path)
+            _fsync_directory(self._path.parent)
         except OSError as error:
             raise ApiError(f"the state file could not be written: {error}") from error
+        finally:
+            # A failed write leaves the temporary behind otherwise, next to a file the operator
+            # is being told to trust.
+            temporary.unlink(missing_ok=True)
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Flush a directory entry, where the platform has such a thing."""
+    try:
+        fd = os.open(directory or Path("."), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        # Directory fsync is not supported everywhere. The contents are already durable.
+        pass
+    finally:
+        os.close(fd)
 
 
 def target_of(base_url: str) -> str:
@@ -824,7 +907,8 @@ def run(
 
     selected = select_authors(library, wanted, mode)
     if not selected:
-        log(f"no author has a book matching {', '.join(wanted)} under {mode} matching")
+        log(f"no author has a book matching {', '.join(repr(g) for g in wanted)} under "
+            f"{mode} matching")
         return EXIT_NO_MATCH
 
     log(f"{len(selected)} authors matched, in priority order:")
@@ -861,6 +945,7 @@ def run(
             continue
 
         before = count_series_asins(library, author.book_ids)
+        last_unsettled = state.previous_unsettled(author_id)
         log(f"{head}: refreshing (author {author_id}), seriesAsin {before}/{len(author.book_ids)}")
 
         outcome = sequencer.refresh(author_id, force)
@@ -885,6 +970,12 @@ def run(
                     f"{head}: the run reached the end of the list but {outcome.unsettled} books "
                     "did not settle, so they kept their unset timestamps"
                 )
+                if last_unsettled == outcome.unsettled:
+                    log(
+                        f"{head}: the same {outcome.unsettled} did not settle last time either, "
+                        "so re-offering this author may just spend the budget again"
+                    )
+            state.record_pending(author_id, author.name, outcome)
             log(f"{head}: not recorded as done, so a later run will pick it up again")
 
     log("")
@@ -987,14 +1078,22 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             f"refusing to talk to port {PRODUCTION_PORT}: that is where a live instance listens. "
             "Pass --allow-production-port if that is genuinely what you mean."
         )
-    if args.poll_interval <= 0:
-        parser.error("--poll-interval must be positive; this tool does not busy-poll")
-    if args.run_timeout < 0:
-        parser.error("--run-timeout must be zero or positive; zero means no client deadline")
+    if not math.isfinite(args.poll_interval) or args.poll_interval <= 0:
+        parser.error("--poll-interval must be a positive number; this tool does not busy-poll")
+    if not math.isfinite(args.run_timeout) or args.run_timeout < 0:
+        parser.error("--run-timeout must be zero or a positive number; zero means no deadline")
     if args.max_attempts < 1:
         parser.error("--max-attempts must be at least 1, or no author would ever be offered")
-    if args.http_timeout <= 0:
-        parser.error("--http-timeout must be positive")
+    if not math.isfinite(args.http_timeout) or args.http_timeout <= 0:
+        parser.error("--http-timeout must be a positive number")
+    # Every other argument that could quietly turn this into a no-op is checked above. A genre
+    # that normalises away is the same failure and would otherwise be reported as exit 1, which
+    # says the LIBRARY has nothing matching rather than that the request named nothing.
+    empty = [genre for genre in args.genres if not split_genre_field(genre)]
+    if len(empty) == len(args.genres):
+        parser.error("--genre named nothing after normalisation; a genre needs a word in it")
+    for genre in empty:
+        print(f"warning: --genre {genre!r} normalises to nothing and is ignored", file=sys.stderr)
     return args
 
 
@@ -1026,15 +1125,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
 
+def report_failure(error: BaseException) -> int:
+    """Turn a raised exception into the exit code and message the contract promises.
+
+    Extracted so the mapping can be asserted on. The case that matters is the last one: without
+    it an unanticipated exception exits with Python's default 1, which this tool publishes as
+    "no author in the library matched". A crash must never be readable as an answer about the
+    library.
+    """
+    if isinstance(error, RefreshDisabled):
+        print(f"metadata refresh is turned off in settings: {error}", file=sys.stderr)
+        return EXIT_API
+    if isinstance(error, ApiError):
+        print(f"api: {error}", file=sys.stderr)
+        return EXIT_API
+    if isinstance(error, KeyboardInterrupt):
+        print("interrupted; completed authors are recorded and will be skipped", file=sys.stderr)
+        return EXIT_INTERRUPTED
+    print(f"unexpected {type(error).__name__}: {error}", file=sys.stderr)
+    return EXIT_API
+
+
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except RefreshDisabled as error:
-        print(f"metadata refresh is turned off in settings: {error}", file=sys.stderr)
-        sys.exit(EXIT_API)
-    except ApiError as error:
-        print(f"api: {error}", file=sys.stderr)
-        sys.exit(EXIT_API)
-    except KeyboardInterrupt:
-        print("interrupted; completed authors are recorded and will be skipped", file=sys.stderr)
-        sys.exit(EXIT_INTERRUPTED)
+    except (ApiError, KeyboardInterrupt) as error:
+        sys.exit(report_failure(error))
+    except Exception as error:
+        sys.exit(report_failure(error))

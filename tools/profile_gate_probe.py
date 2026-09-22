@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduce two Listenarr release-selection defects on a stock instance, with their controls.
+"""Reproduce three Listenarr release-selection defects on a stock instance, with their controls.
 
 What this demonstrates
 ----------------------
@@ -14,6 +14,10 @@ B3, for a result classified as NZB the minimum and maximum size gate, the qualit
 allowed-quality veto all sit inside one if (!isNzb) block and never run. Every NZB scores 100,
 so NZB outranks torrent structurally whatever it contains, and a quality the operator switched off
 downloads over Usenet with no rejection reason.
+
+B4, the score is capped at 100 and starts at 100, so an operator preference lands on a number that
+is about to be truncated away. Two releases that the profile ranks differently come back with the
+same score, and the grab then falls to whatever order the indexer answered in.
 
 The controls, and what each one proves
 --------------------------------------
@@ -31,6 +35,11 @@ B3 control 2, a gate that is not protocol-conditional. A forbidden word in the t
 reject BOTH protocols. This is the control that must come out differently from the findings: it
 rules out the alternative reading, that NZB results never reach the scorer or that the scorer
 cannot reject one, which would make every B3 result an artifact.
+
+B4 control, the identical preference scored on a rung far enough down the ladder that the cap was
+never in reach. It has to separate the two releases. That rules out the alternative reading, that
+preferred words and the seeder bonus never reach the score at all, which would make the tie at the
+top an artifact rather than the cap.
 
 The apparatus
 -------------
@@ -140,6 +149,7 @@ def profile(
     maximum_size_mb: int = 0,
     minimum_seeders: int = 0,
     forbidden: Sequence[str] = (),
+    preferred_words: Sequence[str] = (),
 ) -> dict[str, object]:
     """A profile whose ordering is the order of rungs, with everything else neutralised.
 
@@ -149,6 +159,8 @@ def profile(
     preferredLanguages empty, or a missing language costs a torrent points and an NZB nothing.
     preferredFormats empty, for the same reason, and because a preferred format silently widens the
     allowed-quality set.
+    preferredWords empty unless a caller asks for them, because every matched word is worth 5 and
+    that is the term B4 measures.
     minimumSeeders zero, or every zero-seeder torrent is rejected before anything else is measured.
     maximumAge zero and no published date, so neither side takes an age penalty.
     """
@@ -164,7 +176,7 @@ def profile(
         "minimumSize": minimum_size_mb,
         "maximumSize": maximum_size_mb,
         "preferredFormats": [],
-        "preferredWords": [],
+        "preferredWords": list(preferred_words),
         "mustNotContain": list(forbidden),
         "mustContain": [],
         "preferredLanguages": [],
@@ -177,7 +189,13 @@ def profile(
 
 
 def release(
-    rid: str, quality: str, protocol: str, size_mb: int, *, title: str | None = None
+    rid: str,
+    quality: str,
+    protocol: str,
+    size_mb: int,
+    *,
+    title: str | None = None,
+    seeders: int = 0,
 ) -> dict[str, object]:
     return {
         "id": rid,
@@ -186,7 +204,7 @@ def release(
         "quality": quality,
         "downloadType": protocol,
         "size": size_mb * MB,
-        "seeders": 0,
+        "seeders": seeders,
         "publishedDate": "",
         "format": "",
         "language": "",
@@ -543,6 +561,100 @@ def check_b3(instance: str) -> list[Check]:
     return checks
 
 
+def check_b4(instance: str) -> list[Check]:
+    print("B4: does an operator preference survive to the score?")
+    print()
+
+    words = ["retail", "unabridged", "narrator", "chaptered", "m4b"]
+    matches_all = " ".join(words)
+
+    # FLAC is the top of the hardcoded ladder, so the quality deduction is zero and the release is
+    # already at the cap before a single preference has been added to it.
+    top = create_profile(
+        instance,
+        profile(
+            "B4 top rung",
+            [("FLAC", True), ("MP3 128kbps", True)],
+            preferred_words=words,
+        ),
+    )
+    top_rows = score(
+        instance,
+        top,
+        [
+            release(
+                "top-preferred",
+                "FLAC",
+                "torrent",
+                300,
+                title=f"Some Book {matches_all} FLAC",
+                seeders=10,
+            ),
+            release("top-plain", "FLAC", "torrent", 300, title="Some Book FLAC"),
+        ],
+    )
+    show("FLAC, five preferred words and ten seeders against neither", top_rows)
+
+    # The same preference on a rung 50 below the cap, where it was never in reach.
+    low = create_profile(
+        instance,
+        profile(
+            "B4 low rung",
+            [("MP3 128kbps", True), ("FLAC", True)],
+            preferred_words=words,
+        ),
+    )
+    low_rows = score(
+        instance,
+        low,
+        [
+            release(
+                "low-preferred",
+                "MP3 128kbps",
+                "torrent",
+                300,
+                title=f"Some Book {matches_all} MP3 128kbps",
+                seeders=10,
+            ),
+            release("low-plain", "MP3 128kbps", "torrent", 300, title="Some Book MP3 128kbps"),
+        ],
+    )
+    show(
+        "control, the identical preference on MP3 128kbps, which starts 50 below the cap",
+        low_rows,
+    )
+    print()
+
+    top_preferred, top_plain = top_rows
+    low_preferred, low_plain = low_rows
+    tied = top_preferred.score == top_plain.score
+    control_separates = low_preferred.score != low_plain.score
+
+    return [
+        Check(
+            "B4 preference truncated",
+            FINDING,
+            "a preferred release and a plain one tie at the top of the ladder",
+            tied,
+            f"both scored {top_preferred.score} although only one matched the profile's words"
+            if tied
+            else f"preferred {top_preferred.score} against plain {top_plain.score}, so the "
+            "preference now separates them",
+        ),
+        Check(
+            "B4 preference control",
+            CONTROL,
+            "the same preference does separate two releases further down the ladder",
+            control_separates,
+            f"preferred {low_preferred.score} against plain {low_plain.score}, so preferred words "
+            "and seeders do reach the score"
+            if control_separates
+            else "the preference changed nothing even where the cap was out of reach, so it never "
+            "reaches the score and the tie above says nothing about the cap",
+        ),
+    ]
+
+
 def report(checks: Sequence[Check]) -> int:
     width = max(len(check.key) for check in checks)
     print("=" * 96)
@@ -627,7 +739,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print()
 
     try:
-        checks = check_b2(instance) + check_b3(instance)
+        checks = check_b2(instance) + check_b3(instance) + check_b4(instance)
         return report(checks)
     finally:
         if started:

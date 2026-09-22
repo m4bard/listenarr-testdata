@@ -107,11 +107,12 @@ is an anecdote. "No key gave 401, a wrong key gave 401, the corrupted key gave 2
 measurement.
 
 `tools/profile_gate_probe.py` is the worked example to copy from, and the first consumer of this
-script. It stands an instance up, reproduces two release-selection defects against the scoring
-endpoint, and carries three controls: a profile edit that has to move the answer, a gate that is
-meant to branch on protocol and has to fire for one side only, and a gate that is not meant to
-branch and has to fire for both. It exits non-zero when a finding stops reproducing, which is what
-turns a reproduction into a regression check once a fix lands.
+script. It stands an instance up, reproduces three release-selection defects against the scoring
+endpoint, and carries four controls: a profile edit that has to move the answer, a gate that is
+meant to branch on protocol and has to fire for one side only, a gate that is not meant to branch
+and has to fire for both, and a preference scored where the 0..100 cap was never in reach, which
+has to separate two releases the capped pair could not. It exits non-zero when a finding stops
+reproducing, which is what turns a reproduction into a regression check once a fix lands.
 
 ## Say which grade of evidence you have
 

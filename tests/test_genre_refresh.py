@@ -111,9 +111,11 @@ class RecordingTransport:
             # This stub ignored the parameter entirely, which is why the whole suite passed while
             # the tool could not find a single monitored author on a real install. Opt-in, so the
             # tests that do not care about language are unaffected.
-            if self.monitored_language is not None:
-                if query.get("language", [None])[0] != self.monitored_language:
-                    author_id = None
+            if (
+                self.monitored_language is not None
+                and query.get("language", [None])[0] != self.monitored_language
+            ):
+                author_id = None
             if author_id is None:
                 return Response(200, {}, {"isMonitored": False, "monitoredAuthor": None})
             return Response(

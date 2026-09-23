@@ -935,7 +935,13 @@ def run(
         head = f"[{position}/{len(selected)}] {author.name}"
         author_id = api.monitored_author_id(author.name, region, language)
         if author_id is None:
-            log(f"{head}: {NOT_MONITORED}, no id to refresh, skipped")
+            # Say what was asked, not just that it failed. The first run of this tool skipped
+            # every author in the list with an identical line, and the line gave the operator
+            # nothing to act on: the lookup was asking for a language no row holds.
+            log(
+                f"{head}: {NOT_MONITORED} for region={region!r} language={language!r}, "
+                "no id to refresh, skipped"
+            )
             incomplete += 1
             continue
         if author_id in already:
@@ -1034,7 +1040,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=f"where completed authors are recorded. Default: {DEFAULT_STATE_FILE}",
     )
     parser.add_argument("--region", default="us", metavar="R", help="monitored author region.")
-    parser.add_argument("--language", default="all", metavar="L", help="monitored author language.")
+    # "all" was the default here and it silently matched nothing. The monitoring endpoint treats
+    # this as a literal column value rather than a wildcard, and a MonitoredAuthors row stores a
+    # real language, so a lookup for "all" answers 200 with isMonitored false for every author
+    # alive. Measured against a real install: language=all and the omitted parameter both returned
+    # {"isMonitored":false} for an author that language=english returned with id 96.
+    parser.add_argument(
+        "--language",
+        default="english",
+        metavar="L",
+        help="monitored author language, matched against the stored row. Not a wildcard: "
+        "'all' matches nothing.",
+    )
     parser.add_argument(
         "--poll-interval",
         type=float,

@@ -86,6 +86,8 @@ class RecordingTransport:
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
         self.library: list[dict[str, Any]] = library or []
         self.monitored: dict[str, int] = {}
+        # None means "answer regardless of the language asked for", the old behaviour.
+        self.monitored_language: str | None = None
         self.start_responses: list[Response] = []
         self.status_responses: dict[str, list[Response]] = {}
 
@@ -104,6 +106,14 @@ class RecordingTransport:
             query = parse_qs(urlsplit(path).query, strict_parsing=True)
             name = query["name"][0]
             author_id = self.monitored.get(name)
+            # A real MonitoredAuthors row stores one language and the endpoint matches it as a
+            # literal, so asking for a language no row holds answers 200 with isMonitored false.
+            # This stub ignored the parameter entirely, which is why the whole suite passed while
+            # the tool could not find a single monitored author on a real install. Opt-in, so the
+            # tests that do not care about language are unaffected.
+            if self.monitored_language is not None:
+                if query.get("language", [None])[0] != self.monitored_language:
+                    author_id = None
             if author_id is None:
                 return Response(200, {}, {"isMonitored": False, "monitoredAuthor": None})
             return Response(
@@ -594,6 +604,53 @@ class TestResumability:
         assert self.go(transport, tmp_path / "state.json") == EXIT_REFRESH_INCOMPLETE
         assert transport.posts() == []
 
+    def test_a_language_no_row_holds_finds_nobody(self, tmp_path: pathlib.Path) -> None:
+        # The defect this tool shipped with. "all" reads like a wildcard and is not one: the
+        # endpoint matches it against the stored column, so every author on a real install came
+        # back unmonitored and nothing was refreshed. Measured on the install before this test
+        # existed: language=all answered {"isMonitored":false} for an author that language=english
+        # answered with an id.
+        transport = RecordingTransport([book(1, ["Ada Wren"], ["Cyberpunk"])])
+        transport.monitored = {"Ada Wren": 42}
+        transport.monitored_language = "english"
+
+        code = run(
+            ListenarrApi(transport), wanted=[CYBERPUNK], mode=MATCH_PHRASE, do_refresh=True,
+            force=True, region="us", language="all",
+            state=StateFile(tmp_path / "state.json", "host:18901"),
+            sequencer=Sequencer(
+                ListenarrApi(transport), 5.0, 600.0, 5, Clock().sleep, Clock(), quiet
+            ),
+            log=quiet,
+        )
+
+        assert code == EXIT_REFRESH_INCOMPLETE
+        assert transport.posts() == []
+
+    def test_the_control_the_stored_language_finds_the_author(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # The control that has to come out differently. Same library, same monitored author, same
+        # stub: only the language asked for changes. Without this, a tool that could never find
+        # anybody would pass the test above.
+        transport = RecordingTransport([book(1, ["Ada Wren"], ["Cyberpunk"])])
+        transport.monitored = {"Ada Wren": 42}
+        transport.monitored_language = "english"
+        transport.start_responses = [accepted("mine")]
+        transport.status_responses = {"mine": [finished("mine")]}
+        clock = Clock()
+
+        code = run(
+            ListenarrApi(transport), wanted=[CYBERPUNK], mode=MATCH_PHRASE, do_refresh=True,
+            force=True, region="us", language="english",
+            state=StateFile(tmp_path / "state.json", "host:18901"),
+            sequencer=Sequencer(ListenarrApi(transport), 5.0, 600.0, 5, clock.sleep, clock, quiet),
+            log=quiet,
+        )
+
+        assert code == EXIT_OK
+        assert transport.posts() != []
+
 
 def _outcome_completed() -> Any:
     from genre_refresh import RunOutcome
@@ -896,6 +953,20 @@ class TestArgumentValidation:
 
     def args(self, *extra: str) -> Any:
         return parse_args(["--base-url", "http://h:18901", "--genre", CYBERPUNK, *extra])
+
+    def test_the_default_language_is_one_a_row_can_hold(self) -> None:
+        # The bug this tool shipped with, pinned at the level it actually occurred. The default
+        # was "all", which reads like a wildcard and is not one: the monitoring endpoint matches
+        # the value against the stored column, so the default found nobody on a real install and
+        # every author was skipped. The tests above pass a language explicitly, so none of them
+        # could have caught a wrong default.
+        assert self.args().language != "all"
+        assert self.args().language == "english"
+
+    def test_an_explicit_language_still_wins(self) -> None:
+        # The control. If the parser ignored the flag, the assertion above would pass for the
+        # wrong reason and this one would fail.
+        assert self.args("--language", "german").language == "german"
 
     def test_zero_attempts_is_refused(self) -> None:
         # With zero the loop body never runs, no POST is issued, and every author is reported

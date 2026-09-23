@@ -88,6 +88,14 @@ nothing was written.
 
 **The image is minimal.** There is no `curl` and no `wget` inside it. There is `python3`.
 
+**A fresh instance seeds no quality profile.** It refuses to grab anything until one exists.
+Create a profile before testing a search or grab flow, not after something silently does
+nothing.
+
+**The torznab stub's info hash is `sha1(title)`.** A grab hash and the corresponding client hash
+can be made to agree deliberately, by construction, which is useful for building a control but
+easy to mistake for a coincidence if you don't already know it's derived that way.
+
 ## Controls, which are the whole point
 
 A test whose apparatus failing looks the same as a pass proves nothing.

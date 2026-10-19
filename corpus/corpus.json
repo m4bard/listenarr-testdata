@@ -961,7 +961,7 @@
       "series": null,
       "series_asin": null,
       "series_position": null,
-      "release_date": "2002-12-29",
+      "release_date": "2009-01-27",
       "language": "english",
       "region": "us",
       "tags": [
@@ -1757,8 +1757,7 @@
       "title": "Crime and Punishment",
       "subtitle": null,
       "authors": [
-        "Fyodor Dostoevsky",
-        "Constance Garnett - translator"
+        "Fyodor Dostoevsky"
       ],
       "narrators": [
         "Anthony Heald"
@@ -1803,6 +1802,233 @@
       "librivox_id": "743",
       "librivox_title": "Brothers Karamazov",
       "librivox_url": "https://librivox.org/the-brothers-karamazov-by-fyodor-dostoyevsky/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B002UZKUAS",
+      "title": "Dracula",
+      "subtitle": null,
+      "authors": [
+        "Bram Stoker"
+      ],
+      "narrators": [
+        "Greg Wise"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2008-12-02",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision"
+      ],
+      "librivox_id": "271",
+      "librivox_title": "Dracula",
+      "librivox_url": "https://librivox.org/dracula-by-bram-stoker/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B00FQRCM9O",
+      "title": "Frankenstein",
+      "subtitle": null,
+      "authors": [
+        "Mary Shelley"
+      ],
+      "narrators": [
+        "Dan Stevens"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2013-10-29",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision"
+      ],
+      "librivox_id": "381",
+      "librivox_title": "Frankenstein, or The Modern Prometheus",
+      "librivox_url": "https://librivox.org/frankenstein-or-modern-prometheus-by-mary-w-shelley/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B085RHYBV9",
+      "title": "Beowulf",
+      "subtitle": null,
+      "authors": [
+        "Anonymous"
+      ],
+      "narrators": [
+        "Svanur Thorkelsson"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2020-03-12",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision"
+      ],
+      "librivox_id": "151",
+      "librivox_title": "Beowulf",
+      "librivox_url": "https://librivox.org/beowulf/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B00VXXUFYO",
+      "title": "The Decline and Fall of the Roman Empire",
+      "subtitle": null,
+      "authors": [
+        "Edward Gibbon"
+      ],
+      "narrators": [
+        "Charlton Griffin"
+      ],
+      "series": "Classical Antiquity (Greece & Rome)",
+      "series_asin": "B0HGHPNWHQ",
+      "series_position": null,
+      "release_date": "2015-04-21",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series"
+      ],
+      "librivox_id": "688",
+      "librivox_title": "History of the Decline and Fall of the Roman Empire Vol. I",
+      "librivox_url": "https://librivox.org/the-decline-and-fall-of-the-roman-empire-vol-i-by-edward-gibbon/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B076FF3QGP",
+      "title": "The Strange Case of Dr Jekyll and Mr Hyde",
+      "subtitle": null,
+      "authors": [
+        "Robert Louis Stevenson"
+      ],
+      "narrators": [
+        "Richard Armitage"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2017-10-24",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "baseline"
+      ],
+      "librivox_id": "417",
+      "librivox_title": "Strange Case of Dr. Jekyll and Mr. Hyde",
+      "librivox_url": "https://librivox.org/the-strange-case-of-dr-jekyll-mr-hyde-by-robert-louis-stevenson/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B08876QLDS",
+      "title": "Ghosts",
+      "subtitle": null,
+      "authors": [
+        "Henrik Ibsen"
+      ],
+      "narrators": [
+        "Andrea Giordani"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2020-05-08",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision"
+      ],
+      "librivox_id": "4816",
+      "librivox_title": "Ghosts",
+      "librivox_url": "https://librivox.org/ghosts-by-henrik-ibsen/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B002V8H9C6",
+      "title": "Greenmantle",
+      "subtitle": null,
+      "authors": [
+        "John Buchan"
+      ],
+      "narrators": [
+        "Christian Rhodska"
+      ],
+      "series": "Richard Hannay",
+      "series_asin": "B013VW5T5O",
+      "series_position": "2",
+      "release_date": "2009-05-04",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "series",
+        "series-order"
+      ],
+      "librivox_id": "879",
+      "librivox_title": "Greenmantle",
+      "librivox_url": "https://librivox.org/greenmantle-by-john-buchan/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B002V0QN30",
+      "title": "Treasure Island",
+      "subtitle": null,
+      "authors": [
+        "Robert Louis Stevenson"
+      ],
+      "narrators": [
+        "David Buck"
+      ],
+      "series": "Treasure Island",
+      "series_asin": "B0711S2Q6J",
+      "series_position": "1",
+      "release_date": "2008-07-11",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision",
+        "series"
+      ],
+      "librivox_id": "449",
+      "librivox_title": "Treasure Island",
+      "librivox_url": "https://librivox.org/treasure-island-by-robert-louis-stevenson/",
+      "librivox_language": "English",
+      "librivox_same_language": true
+    },
+    {
+      "asin": "B09GD1GD8N",
+      "title": "Ozymandias",
+      "subtitle": null,
+      "authors": [
+        "Percy Bysshe Shelley"
+      ],
+      "narrators": [
+        "Sam Kusi"
+      ],
+      "series": null,
+      "series_asin": null,
+      "series_position": null,
+      "release_date": "2021-09-16",
+      "language": "english",
+      "region": "us",
+      "tags": [
+        "title-collision"
+      ],
+      "librivox_id": "237",
+      "librivox_title": "Ozymandias of Egypt",
+      "librivox_url": "https://librivox.org/ozymandias-of-egypt-by-percy-bysshe-shelley/",
       "librivox_language": "English",
       "librivox_same_language": true
     },
